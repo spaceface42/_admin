@@ -475,6 +475,11 @@ async function loadGithubDb() {
 async function saveGithubDb() {
   try {
     ensureConnected();
+
+    if (formHasDraft() && !upsertPage()) {
+      return;
+    }
+
     setBusy(true);
     setStatus("Checking GitHub repository...");
     await loadRepoInfo();
@@ -689,8 +694,27 @@ function deletePage(id) {
   setStatus(`Deleted ${id} locally. Save to GitHub when ready.`);
 }
 
+function formHasDraft() {
+  return Boolean(
+    editingId ||
+      pageId.value.trim() ||
+      slug.value.trim() ||
+      title.value.trim() ||
+      subtitle.value.trim() ||
+      body.value.trim() ||
+      coverSrc.value.trim() ||
+      coverFile.files[0] ||
+      imageFields.children.length
+  );
+}
+
 function upsertPage(event) {
-  event.preventDefault();
+  event?.preventDefault();
+
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    return false;
+  }
 
   const now = new Date().toISOString();
   const id = editingId || slugify(pageId.value.trim());
@@ -701,7 +725,7 @@ function upsertPage(event) {
       validateImageFile(coverUpload);
     } catch (error) {
       alert(error.message);
-      return;
+      return false;
     }
 
     coverSrc.value = assetFilePath(id, coverUpload, "cover");
@@ -714,7 +738,7 @@ function upsertPage(event) {
     images = readImageRows();
   } catch (error) {
     alert(error.message);
-    return;
+    return false;
   }
 
   const record = normalizePage({
@@ -740,7 +764,7 @@ function upsertPage(event) {
   });
 
   if (!record.id || !record.slug || !record.title) {
-    return;
+    return false;
   }
 
   db.pages[record.id] = record;
@@ -754,6 +778,7 @@ function upsertPage(event) {
       ? `Saved ${record.id} locally with pending image uploads. Save to GitHub before refreshing.`
       : `Saved ${record.id} locally. Save to GitHub when ready.`
   );
+  return true;
 }
 
 function upsertMetaItem(page) {
