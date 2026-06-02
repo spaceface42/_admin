@@ -32,6 +32,8 @@ The admin connects to an administered repository through the GitHub API. It read
 
 The token is stored only in this browser's `localStorage`. Use **Forget token** when done. Local drafts are stored per administered repository.
 
+Use **Remember token** to decide whether the token should be kept in this browser. Turn it off when using a shared or temporary browser profile.
+
 ## Repository URL
 
 Use the GitHub repository URL, not the GitHub Pages URL.
@@ -68,7 +70,7 @@ The admin uses GitHub's Git Data API to create one commit per save. That means p
 
 After saving, reconnecting and clicking **Load DB** should show the latest saved data from GitHub.
 
-The save status includes a link to the administered repository's GitHub Actions page. In `_blackhole`, that Action rebuilds `docs/` after content changes.
+The save status includes build progress. In `_blackhole`, the Action rebuilds `docs/` after content changes. The admin polls that workflow and reports when the build succeeds or fails.
 
 ## Path Safety
 
@@ -79,6 +81,14 @@ The admin validates configured repository paths before loading or saving:
 - imported JSON backups are checked before they are stored locally
 
 External image URLs are still allowed for image fields, but uploaded files are always written to the configured assets folder.
+
+## Preview
+
+Use **Preview** to render the current form before saving. This preview is approximate, but it uses the same title, subtitle, body, cover image, and gallery data that will be written to JSON.
+
+## Roadmap
+
+See `ROADMAP.md` for the status of robustness and workflow improvements.
 
 ## Administered Repo Requirements
 

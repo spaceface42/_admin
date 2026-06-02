@@ -34,6 +34,10 @@
           GitHub token
           <input id="githubToken" type="password" placeholder="Fine-grained token with Contents read/write">
         </label>
+        <label class="checkbox-label remember-label">
+          <input id="rememberToken" type="checkbox" checked>
+          Remember token
+        </label>
         <label>
           Repository URL
           <input id="repoUrl" type="url" placeholder="https://github.com/owner/repo">
@@ -47,6 +51,8 @@
           <div><dt>Repository</dt><dd id="repoSummary">Not connected</dd></div>
           <div><dt>Config</dt><dd id="configSummary">admin.config.json</dd></div>
           <div><dt>Data</dt><dd id="dataSummary">Not loaded</dd></div>
+          <div><dt>Public site</dt><dd id="publicSiteSummary">Not configured</dd></div>
+          <div><dt>Build</dt><dd id="buildSummary">No build checked yet</dd></div>
         </dl>
       </section>
 
@@ -124,6 +130,7 @@
 
           <div class="form-actions">
             <button id="saveButton" type="submit">Save page</button>
+            <button id="previewButton" type="button">Preview</button>
             <button id="resetButton" type="button">Clear</button>
           </div>
         </form>
@@ -135,6 +142,14 @@
           </div>
           <div id="pageList" class="page-list"></div>
         </section>
+      </section>
+
+      <section id="previewPanel" class="panel preview-panel" hidden>
+        <div class="list-heading">
+          <h2>Preview</h2>
+          <button id="closePreviewButton" type="button">Close</button>
+        </div>
+        <div id="previewContent" class="preview-content"></div>
       </section>
     </main>
 

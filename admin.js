@@ -4,11 +4,12 @@ let metaPath = "data/meta.json";
 let pagesDir = "data/pages";
 let assetsDir = "data/assets";
 const configPath = "admin.config.json";
-const maxImageSize = 2 * 1024 * 1024;
-const allowedImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+let maxImageSize = 2 * 1024 * 1024;
+let allowedImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const storageKey = "github-json-page-db-v2";
 const tokenKey = "github-json-page-db-token";
 const repoUrlKey = "github-json-page-db-repo-url";
+const rememberTokenKey = "github-json-page-db-remember-token";
 let repoApiBase = "";
 
 const form = document.querySelector("#pageForm");
@@ -36,12 +37,19 @@ const connectButton = document.querySelector("#connectButton");
 const loadGithubButton = document.querySelector("#loadGithubButton");
 const saveGithubButton = document.querySelector("#saveGithubButton");
 const githubToken = document.querySelector("#githubToken");
+const rememberToken = document.querySelector("#rememberToken");
 const repoUrl = document.querySelector("#repoUrl");
 const forgetTokenButton = document.querySelector("#forgetTokenButton");
 const statusText = document.querySelector("#statusText");
 const repoSummary = document.querySelector("#repoSummary");
 const configSummary = document.querySelector("#configSummary");
 const dataSummary = document.querySelector("#dataSummary");
+const publicSiteSummary = document.querySelector("#publicSiteSummary");
+const buildSummary = document.querySelector("#buildSummary");
+const previewButton = document.querySelector("#previewButton");
+const previewPanel = document.querySelector("#previewPanel");
+const previewContent = document.querySelector("#previewContent");
+const closePreviewButton = document.querySelector("#closePreviewButton");
 
 let db = loadLocalDb();
 let editingId = null;
@@ -49,8 +57,14 @@ let metaSha = null;
 let pageShas = {};
 let deletedPageFiles = [];
 let branch = "main";
+let siteConfig = {};
+let previewUrl = "";
+let actionsUrl = "";
+let lastLoadedHeadSha = null;
+let lastSavedHeadSha = null;
 
-githubToken.value = localStorage.getItem(tokenKey) || "";
+rememberToken.checked = localStorage.getItem(rememberTokenKey) !== "false";
+githubToken.value = rememberToken.checked ? localStorage.getItem(tokenKey) || "" : "";
 repoUrl.value = localStorage.getItem(repoUrlKey) || "";
 
 function emptyDb() {
@@ -73,11 +87,90 @@ function parseRepoUrl(value) {
 }
 
 function applyConfig(config) {
+  siteConfig = config || {};
   metaPath = validateRepoPath(config.paths?.meta || "data/meta.json", "meta path");
   pagesDir = validateRepoPath(config.paths?.pages || "data/pages", "pages path");
   assetsDir = validateRepoPath(config.paths?.assets || "data/assets", "assets path");
+  maxImageSize = Number(config.uploads?.maxImageSize) || maxImageSize;
+  allowedImageTypes = Array.isArray(config.uploads?.allowedImageTypes)
+    ? config.uploads.allowedImageTypes.map(String)
+    : allowedImageTypes;
+  previewUrl = String(config.site?.previewUrl || config.site?.url || "").trim();
+  actionsUrl = `https://github.com/${repoOwner}/${repoName}/actions`;
+  renderContentTypes(config.contentTypes || []);
   configSummary.textContent = `${config.name || "Configured site"} (${configPath})`;
   dataSummary.textContent = `${metaPath}, ${pagesDir}, ${assetsDir}`;
+  renderSummaryLink(publicSiteSummary, previewUrl, previewUrl || "Not configured");
+  renderSummaryLink(buildSummary, actionsUrl, "Actions");
+}
+
+function renderContentTypes(contentTypes) {
+  const current = pageType.value;
+  pageType.innerHTML = "";
+
+  const types = contentTypes.length
+    ? contentTypes
+    : [
+        { type: "page", label: "Page" },
+        { type: "gallery", label: "Gallery" }
+      ];
+
+  types.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = String(item.type || "page");
+    option.textContent = String(item.label || item.type || "Page");
+    pageType.append(option);
+  });
+
+  if ([...pageType.options].some((option) => option.value === current)) {
+    pageType.value = current;
+  }
+}
+
+function currentTypeConfig() {
+  return (siteConfig.contentTypes || []).find((item) => item.type === pageType.value) || {};
+}
+
+function configuredFieldsForCurrentType() {
+  return (currentTypeConfig().fields || []).map((field) =>
+    typeof field === "string" ? { name: field } : field
+  );
+}
+
+function validateRequiredConfiguredFields() {
+  const fields = configuredFieldsForCurrentType().filter((field) => field.required);
+  const values = {
+    title: title.value.trim(),
+    subtitle: subtitle.value.trim(),
+    body: body.value.trim(),
+    coverImage: coverSrc.value.trim() || coverFile.files[0],
+    images: imageFields.children.length
+  };
+
+  for (const field of fields) {
+    if (!values[field.name]) {
+      alert(`${field.label || field.name} is required.`);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function renderSummaryLink(container, href, label) {
+  container.textContent = "";
+
+  if (!href) {
+    container.textContent = label;
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = label;
+  container.append(link);
 }
 
 function validateRepoPath(value, label = "path") {
@@ -120,6 +213,7 @@ async function connectRepository() {
     repoSummary.textContent = `${repoOwner}/${repoName}`;
     setStatus("Checking repository...");
     await loadRepoInfo();
+    lastLoadedHeadSha = await getHeadSha();
     setStatus(`Loading ${configPath}...`);
     const payload = await loadGithubFile(configPath);
     const config = JSON.parse(decodeBase64(payload.content));
@@ -127,6 +221,7 @@ async function connectRepository() {
     db = loadLocalDb();
     resetForm();
     renderPages();
+    setBuildStatus("No build checked yet");
     setStatus(`Connected to ${repoOwner}/${repoName}.`);
   } catch (error) {
     setStatus(`Connect failed: ${explainGithubError(error)}`);
@@ -302,6 +397,14 @@ function setStatus(message) {
   statusText.textContent = message;
 }
 
+function setBuildStatus(message, url = actionsUrl) {
+  if (url) {
+    renderSummaryLink(buildSummary, url, message);
+  } else {
+    buildSummary.textContent = message;
+  }
+}
+
 function explainGithubError(error) {
   if (error.status === 401) {
     return "Bad or expired token. Create a new fine-grained token and paste it here.";
@@ -331,8 +434,10 @@ function ensureConnected() {
 function getToken() {
   const token = githubToken.value.trim();
 
-  if (token) {
+  if (rememberToken.checked && token) {
     localStorage.setItem(tokenKey, token);
+  } else if (!rememberToken.checked) {
+    localStorage.removeItem(tokenKey);
   }
 
   return token;
@@ -427,6 +532,27 @@ async function githubRequest(url, options = {}) {
 async function loadRepoInfo() {
   const payload = await githubRequest(repoApiBase);
   branch = payload.default_branch || branch;
+}
+
+async function getHeadSha() {
+  const ref = await getBranchRef();
+  return ref.object.sha;
+}
+
+async function confirmRemoteIsFresh() {
+  if (!lastLoadedHeadSha) {
+    return true;
+  }
+
+  const remoteHeadSha = await getHeadSha();
+
+  if (remoteHeadSha === lastLoadedHeadSha || remoteHeadSha === lastSavedHeadSha) {
+    return true;
+  }
+
+  return confirm(
+    `The repository changed since you last loaded it.\n\nLoaded: ${lastLoadedHeadSha.slice(0, 7)}\nRemote: ${remoteHeadSha.slice(0, 7)}\n\nSave anyway and build on top of the newest remote commit?`
+  );
 }
 
 async function loadGithubFile(path) {
@@ -650,12 +776,65 @@ async function commitDatabaseChanges() {
   return { changed: true, sha: commit.sha };
 }
 
+async function listWorkflowRunsForCommit(commitSha) {
+  const query = new URLSearchParams({
+    branch,
+    event: "push",
+    head_sha: commitSha,
+    per_page: "10"
+  });
+
+  const payload = await githubJsonRequest(`/actions/runs?${query.toString()}`);
+
+  return (payload.workflow_runs || []).filter((run) => run.name === "Build docs");
+}
+
+async function waitForDocsBuild(commitSha) {
+  if (!actionsUrl) {
+    return;
+  }
+
+  setBuildStatus(`Build queued for ${commitSha.slice(0, 7)}...`);
+
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    const runs = await listWorkflowRunsForCommit(commitSha);
+    const run = runs[0];
+
+    if (!run) {
+      setBuildStatus(`Waiting for docs build to start...`);
+    } else if (run.status === "completed") {
+      if (run.conclusion === "success") {
+        const label = previewUrl ? `Build completed. Open public site.` : `Build completed.`;
+        setBuildStatus(label, previewUrl || run.html_url);
+        setStatus(
+          previewUrl
+            ? `GitHub save and docs build completed. Public site: ${previewUrl}`
+            : `GitHub save and docs build completed.`
+        );
+      } else {
+        setBuildStatus(`Build ${run.conclusion}. View Actions.`, run.html_url);
+        setStatus(`GitHub save succeeded, but docs build ${run.conclusion}. Check Actions: ${run.html_url}`);
+      }
+
+      return;
+    } else {
+      setBuildStatus(`Build ${run.status}...`, run.html_url);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+
+  setBuildStatus(`Build not finished yet. View Actions.`, actionsUrl);
+  setStatus(`GitHub save succeeded. Docs build is still running or delayed: ${actionsUrl}`);
+}
+
 async function loadGithubDb() {
   try {
     ensureConnected();
     setBusy(true);
     setStatus("Checking GitHub repository...");
     await loadRepoInfo();
+    lastLoadedHeadSha = await getHeadSha();
 
     setStatus(`Loading ${metaPath} from ${branch}...`);
 
@@ -702,6 +881,8 @@ async function loadGithubDb() {
     saveLocalDb();
     resetForm();
     renderPages();
+    lastSavedHeadSha = null;
+    setBuildStatus("No build checked yet");
     setStatus(`Loaded ${db.meta.pages.length} records from ${repoOwner}/${repoName}.`);
   } catch (error) {
     setStatus(`Load failed: ${explainGithubError(error)}`);
@@ -722,14 +903,24 @@ async function saveGithubDb() {
     setStatus("Checking GitHub repository...");
     await loadRepoInfo();
 
+    if (!(await confirmRemoteIsFresh())) {
+      setStatus("Save cancelled. Load DB to review the latest remote data.");
+      return;
+    }
+
     const result = await commitDatabaseChanges();
-    const actionsUrl = `https://github.com/${repoOwner}/${repoName}/actions`;
 
     setStatus(
       result.changed
-        ? `Saved ${db.meta.pages.length} records in one Git commit: ${result.sha.slice(0, 7)}. Docs build should run shortly: ${actionsUrl}`
+        ? `Saved ${db.meta.pages.length} records in one Git commit: ${result.sha.slice(0, 7)}. Waiting for docs build...`
         : `No Git changes to save. Docs are already based on the latest committed data.`
     );
+
+    if (result.changed) {
+      lastLoadedHeadSha = result.sha;
+      lastSavedHeadSha = result.sha;
+      await waitForDocsBuild(result.sha);
+    }
   } catch (error) {
     setStatus(`Save failed: ${explainGithubError(error)}`);
   } finally {
@@ -926,6 +1117,10 @@ function upsertPage(event) {
     return false;
   }
 
+  if (!validateRequiredConfiguredFields()) {
+    return false;
+  }
+
   const now = new Date().toISOString();
   const id = editingId || slugify(pageId.value.trim());
   const coverUpload = coverFile.files[0];
@@ -1091,6 +1286,73 @@ function escapeAttribute(value) {
     .replace(/>/g, "&gt;");
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function textToHtml(value) {
+  return String(value ?? "")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function renderPreviewImage(image) {
+  if (!image?.src) {
+    return "";
+  }
+
+  const caption = image.caption ? `<figcaption>${escapeHtml(image.caption)}</figcaption>` : "";
+
+  return `<figure><img src="${escapeAttribute(resolveImageSrc(image.src))}" alt="${escapeAttribute(image.alt || "")}">${caption}</figure>`;
+}
+
+function currentFormRecordForPreview() {
+  let images = [];
+
+  try {
+    images = readImageRows();
+  } catch {
+    images = [];
+  }
+
+  return {
+    title: title.value.trim() || "Untitled",
+    subtitle: subtitle.value.trim(),
+    body: body.value.trim(),
+    coverImage: coverSrc.value.trim()
+      ? {
+          src: coverFile.files[0] ? URL.createObjectURL(coverFile.files[0]) : coverSrc.value.trim(),
+          alt: coverAlt.value.trim(),
+          caption: coverCaption.value.trim()
+        }
+      : null,
+    images
+  };
+}
+
+function showPreview() {
+  const record = currentFormRecordForPreview();
+  const gallery = record.images.map(renderPreviewImage).join("");
+
+  previewContent.innerHTML = `
+    <h1>${escapeHtml(record.title)}</h1>
+    ${record.subtitle ? `<p class="subtitle">${escapeHtml(record.subtitle)}</p>` : ""}
+    ${renderPreviewImage(record.coverImage)}
+    <article>${textToHtml(record.body)}</article>
+    ${gallery ? `<div class="database-gallery">${gallery}</div>` : ""}
+  `;
+  previewPanel.hidden = false;
+  previewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function readImageRows() {
   const id = editingId || slugify(pageId.value.trim());
   const images = [];
@@ -1213,6 +1475,19 @@ importFile.addEventListener("change", importJson);
 connectButton.addEventListener("click", connectRepository);
 loadGithubButton.addEventListener("click", loadGithubDb);
 saveGithubButton.addEventListener("click", saveGithubDb);
+previewButton.addEventListener("click", showPreview);
+closePreviewButton.addEventListener("click", () => {
+  previewPanel.hidden = true;
+});
+rememberToken.addEventListener("change", () => {
+  localStorage.setItem(rememberTokenKey, String(rememberToken.checked));
+
+  if (!rememberToken.checked) {
+    localStorage.removeItem(tokenKey);
+  } else if (githubToken.value.trim()) {
+    localStorage.setItem(tokenKey, githubToken.value.trim());
+  }
+});
 forgetTokenButton.addEventListener("click", () => {
   githubToken.value = "";
   localStorage.removeItem(tokenKey);

@@ -48,6 +48,11 @@ button:hover,
   background: var(--accent-strong);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .shell {
   margin: 0 auto;
   max-width: 1120px;
@@ -103,7 +108,7 @@ h2 {
   align-items: end;
   display: grid;
   gap: 16px;
-  grid-template-columns: 1fr minmax(260px, 360px) auto;
+  grid-template-columns: 1fr minmax(220px, 300px) minmax(140px, auto) minmax(260px, 360px) auto;
   margin-bottom: 20px;
 }
 
@@ -175,6 +180,11 @@ legend {
 
 .checkbox-label input {
   width: auto;
+}
+
+.remember-label {
+  align-self: center;
+  padding-bottom: 11px;
 }
 
 .fieldset-heading {
@@ -253,13 +263,49 @@ textarea {
 }
 
 #resetButton:hover,
-#forgetTokenButton:hover {
+#forgetTokenButton:hover,
+#previewButton:hover,
+#closePreviewButton:hover {
   background: #d9e1e8;
 }
 
-#forgetTokenButton {
+#forgetTokenButton,
+#previewButton,
+#closePreviewButton {
   background: #e8edf2;
   color: var(--text);
+}
+
+.config-summary {
+  margin-bottom: 20px;
+}
+
+.config-summary dl {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin: 14px 0 0;
+}
+
+.config-summary div {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.config-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.config-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.config-summary a {
+  color: var(--accent);
 }
 
 .list-heading {
@@ -295,6 +341,46 @@ textarea {
   gap: 12px;
   grid-template-columns: 1fr auto;
   padding: 14px;
+}
+
+.preview-panel {
+  margin-top: 20px;
+}
+
+.preview-content {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 18px;
+}
+
+.preview-content h1 {
+  font-size: 32px;
+}
+
+.preview-content .subtitle {
+  color: var(--muted);
+  font-size: 18px;
+  margin: 8px 0 24px;
+}
+
+.preview-content article {
+  line-height: 1.6;
+}
+
+.preview-content img {
+  display: block;
+  height: auto;
+  max-width: 100%;
+}
+
+.preview-content figure {
+  margin: 20px 0;
+}
+
+.preview-content figcaption {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 8px;
 }
 
 .page-row h3 {
