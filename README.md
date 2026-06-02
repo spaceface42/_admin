@@ -62,9 +62,23 @@ Do not commit the token. The admin only stores it in the current browser's `loca
 
 ## Save Flow
 
-When you click **Save to GitHub**, the admin first saves the visible form into the local JSON database, then uploads the JSON and pending image files to the configured repository.
+When you click **Save to GitHub**, the admin first saves the visible form into the local JSON database, then writes the changed JSON and pending image files to the configured repository.
+
+The admin uses GitHub's Git Data API to create one commit per save. That means page JSON, `data/meta.json`, uploaded image files, and deleted page files are applied together as a single Git commit.
 
 After saving, reconnecting and clicking **Load DB** should show the latest saved data from GitHub.
+
+The save status includes a link to the administered repository's GitHub Actions page. In `_blackhole`, that Action rebuilds `docs/` after content changes.
+
+## Path Safety
+
+The admin validates configured repository paths before loading or saving:
+
+- page files must stay inside the configured pages folder
+- uploaded files must stay inside the configured assets folder
+- imported JSON backups are checked before they are stored locally
+
+External image URLs are still allowed for image fields, but uploaded files are always written to the configured assets folder.
 
 ## Administered Repo Requirements
 

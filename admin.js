@@ -73,11 +73,40 @@ function parseRepoUrl(value) {
 }
 
 function applyConfig(config) {
-  metaPath = config.paths?.meta || "data/meta.json";
-  pagesDir = config.paths?.pages || "data/pages";
-  assetsDir = config.paths?.assets || "data/assets";
+  metaPath = validateRepoPath(config.paths?.meta || "data/meta.json", "meta path");
+  pagesDir = validateRepoPath(config.paths?.pages || "data/pages", "pages path");
+  assetsDir = validateRepoPath(config.paths?.assets || "data/assets", "assets path");
   configSummary.textContent = `${config.name || "Configured site"} (${configPath})`;
   dataSummary.textContent = `${metaPath}, ${pagesDir}, ${assetsDir}`;
+}
+
+function validateRepoPath(value, label = "path") {
+  const path = String(value || "").trim().replace(/^\/+/, "");
+
+  if (!path) {
+    throw new Error(`Invalid ${label}: path is empty.`);
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(path)) {
+    throw new Error(`Invalid ${label}: repository paths cannot be URLs.`);
+  }
+
+  if (path.split("/").some((part) => !part || part === "." || part === "..")) {
+    throw new Error(`Invalid ${label}: ${path}`);
+  }
+
+  return path;
+}
+
+function validatePathInDir(value, dir, label = "path") {
+  const path = validateRepoPath(value, label);
+  const base = validateRepoPath(dir, `${label} base`);
+
+  if (path !== base && !path.startsWith(`${base}/`)) {
+    throw new Error(`Invalid ${label}: ${path} must be inside ${base}/.`);
+  }
+
+  return path;
 }
 
 async function connectRepository() {
@@ -223,6 +252,34 @@ function buildMetaFromPages(pages) {
     version: 1,
     pages: Object.values(pages).map((page, index) => normalizeMetaItem({}, page, index))
   };
+}
+
+function validateDbPaths() {
+  validateRepoPath(metaPath, "meta path");
+
+  for (const item of db.meta.pages) {
+    item.file = validatePathInDir(item.file || pageFilePath(item.id), pagesDir, `page file for ${item.id}`);
+
+    const page = db.pages[item.id];
+
+    if (!page) {
+      continue;
+    }
+
+    if (page.coverImage?.pendingFile) {
+      page.coverImage.src = validatePathInDir(page.coverImage.src, assetsDir, `cover image for ${page.id}`);
+    }
+
+    for (const image of page.images) {
+      if (image.pendingFile) {
+        image.src = validatePathInDir(image.src, assetsDir, `image for ${page.id}`);
+      }
+    }
+  }
+
+  for (const path of deletedPageFiles) {
+    validatePathInDir(path, pagesDir, "deleted page file");
+  }
 }
 
 function saveLocalDb() {
@@ -413,6 +470,186 @@ async function saveGithubAsset(path, file, sha, message) {
   });
 }
 
+async function githubJsonRequest(path, options = {}) {
+  return githubRequest(`${repoApiBase}${path}`, options);
+}
+
+async function getBranchRef() {
+  return githubJsonRequest(`/git/ref/heads/${branch}`);
+}
+
+async function getGitCommit(sha) {
+  return githubJsonRequest(`/git/commits/${sha}`);
+}
+
+async function createBlob(content, encoding = "utf-8") {
+  return githubJsonRequest("/git/blobs", {
+    method: "POST",
+    body: JSON.stringify({ content, encoding })
+  });
+}
+
+async function createTree(baseTreeSha, tree) {
+  return githubJsonRequest("/git/trees", {
+    method: "POST",
+    body: JSON.stringify({
+      base_tree: baseTreeSha,
+      tree
+    })
+  });
+}
+
+async function createCommit(message, treeSha, parentSha) {
+  return githubJsonRequest("/git/commits", {
+    method: "POST",
+    body: JSON.stringify({
+      message,
+      tree: treeSha,
+      parents: [parentSha]
+    })
+  });
+}
+
+async function updateBranchRef(commitSha) {
+  return githubJsonRequest(`/git/refs/heads/${branch}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      sha: commitSha,
+      force: false
+    })
+  });
+}
+
+async function fileToBase64(file) {
+  const dataUrl = await fileToDataUrl(file);
+  return stripDataUrl(dataUrl);
+}
+
+function jsonFileContent(value) {
+  return `${JSON.stringify(stripPendingFiles(value), null, 2)}\n`;
+}
+
+function collectPendingFiles() {
+  const files = [];
+
+  for (const item of db.meta.pages) {
+    const page = db.pages[item.id];
+
+    if (!page) {
+      continue;
+    }
+
+    if (page.coverImage?.pendingFile) {
+      files.push({
+        image: page.coverImage,
+        file: page.coverImage.pendingFile,
+        path: page.coverImage.src,
+        label: `cover image for ${page.id}`
+      });
+    }
+
+    for (const image of page.images) {
+      if (image.pendingFile) {
+        files.push({
+          image,
+          file: image.pendingFile,
+          path: image.src,
+          label: `image for ${page.id}`
+        });
+      }
+    }
+  }
+
+  return files;
+}
+
+function clearPendingFiles(pendingFiles) {
+  pendingFiles.forEach((item) => {
+    delete item.image.pendingFile;
+  });
+}
+
+async function commitDatabaseChanges() {
+  validateDbPaths();
+
+  const pendingFiles = collectPendingFiles();
+  const treeEntries = [];
+
+  setStatus("Preparing one Git commit...");
+  const ref = await getBranchRef();
+  const parentSha = ref.object.sha;
+  const parentCommit = await getGitCommit(parentSha);
+  const baseTreeSha = parentCommit.tree.sha;
+
+  for (const item of db.meta.pages) {
+    const page = db.pages[item.id];
+
+    if (!page) {
+      continue;
+    }
+
+    const filePath = validatePathInDir(item.file, pagesDir, `page file for ${item.id}`);
+    const blob = await createBlob(jsonFileContent(page));
+    treeEntries.push({
+      path: filePath,
+      mode: "100644",
+      type: "blob",
+      sha: blob.sha
+    });
+  }
+
+  const metaBlob = await createBlob(jsonFileContent(db.meta));
+  treeEntries.push({
+    path: validateRepoPath(metaPath, "meta path"),
+    mode: "100644",
+    type: "blob",
+    sha: metaBlob.sha
+  });
+
+  for (const item of pendingFiles) {
+    validateImageFile(item.file);
+    const filePath = validatePathInDir(item.path, assetsDir, item.label);
+    setStatus(`Preparing ${filePath}...`);
+    const blob = await createBlob(await fileToBase64(item.file), "base64");
+    treeEntries.push({
+      path: filePath,
+      mode: "100644",
+      type: "blob",
+      sha: blob.sha
+    });
+  }
+
+  for (const path of deletedPageFiles) {
+    treeEntries.push({
+      path: validatePathInDir(path, pagesDir, "deleted page file"),
+      mode: "100644",
+      type: "blob",
+      sha: null
+    });
+  }
+
+  const tree = await createTree(baseTreeSha, treeEntries);
+
+  if (tree.sha === baseTreeSha) {
+    clearPendingFiles(pendingFiles);
+    deletedPageFiles = [];
+    saveLocalDb();
+    return { changed: false, sha: parentSha };
+  }
+
+  setStatus("Committing database changes...");
+  const commit = await createCommit("Update site data", tree.sha, parentSha);
+  await updateBranchRef(commit.sha);
+
+  clearPendingFiles(pendingFiles);
+  deletedPageFiles = [];
+  metaSha = null;
+  pageShas = {};
+  saveLocalDb();
+
+  return { changed: true, sha: commit.sha };
+}
+
 async function loadGithubDb() {
   try {
     ensureConnected();
@@ -447,8 +684,9 @@ async function loadGithubDb() {
     const nextPageShas = {};
 
     for (const item of meta.pages || []) {
-      setStatus(`Loading ${item.file || pageFilePath(item.id)}...`);
-      const pagePayload = await loadGithubFile(item.file || pageFilePath(item.id));
+      const itemFile = validatePathInDir(item.file || pageFilePath(item.id), pagesDir, `page file for ${item.id}`);
+      setStatus(`Loading ${itemFile}...`);
+      const pagePayload = await loadGithubFile(itemFile);
       const page = normalizePage(JSON.parse(decodeBase64(pagePayload.content)));
       nextPages[page.id] = page;
       nextPageShas[page.id] = pagePayload.sha;
@@ -484,42 +722,14 @@ async function saveGithubDb() {
     setStatus("Checking GitHub repository...");
     await loadRepoInfo();
 
-    const previousMeta = await getExistingFile(metaPath);
-    metaSha = previousMeta?.sha || metaSha;
+    const result = await commitDatabaseChanges();
+    const actionsUrl = `https://github.com/${repoOwner}/${repoName}/actions`;
 
-    await uploadPendingImages();
-
-    for (const path of deletedPageFiles) {
-      const previousPage = await getExistingFile(path);
-
-      if (!previousPage) {
-        continue;
-      }
-
-      setStatus(`Deleting ${path}...`);
-      await deleteGithubFile(path, previousPage.sha, `Delete ${path}`);
-    }
-
-    deletedPageFiles = [];
-
-    for (const item of db.meta.pages) {
-      const page = db.pages[item.id];
-
-      if (!page) {
-        continue;
-      }
-
-      setStatus(`Saving ${item.file}...`);
-      const previousPage = await getExistingFile(item.file);
-      const payload = await saveGithubFile(item.file, page, previousPage?.sha || pageShas[item.id], `Update ${item.id}`);
-      pageShas[item.id] = payload.content.sha;
-    }
-
-    setStatus(`Saving ${metaPath}...`);
-    const metaPayload = await saveGithubFile(metaPath, db.meta, metaSha, "Update page index");
-    metaSha = metaPayload.content.sha;
-    saveLocalDb();
-    setStatus(`Saved ${db.meta.pages.length} records to GitHub: ${metaPayload.commit.sha.slice(0, 7)}.`);
+    setStatus(
+      result.changed
+        ? `Saved ${db.meta.pages.length} records in one Git commit: ${result.sha.slice(0, 7)}. Docs build should run shortly: ${actionsUrl}`
+        : `No Git changes to save. Docs are already based on the latest committed data.`
+    );
   } catch (error) {
     setStatus(`Save failed: ${explainGithubError(error)}`);
   } finally {
@@ -940,6 +1150,7 @@ function importJson(event) {
   reader.addEventListener("load", () => {
     try {
       db = normalizeDb(JSON.parse(reader.result));
+      validateDbPaths();
       metaSha = null;
       pageShas = {};
       deletedPageFiles = [];
