@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JSON Site Admin</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>JSON Site Admin</h1>
+          <p>Manage JSON content and uploaded assets for a configured GitHub repository.</p>
+        </div>
+        <div class="actions">
+          <button id="connectButton" type="button">Connect</button>
+          <button id="loadGithubButton" type="button">Load DB</button>
+          <button id="saveGithubButton" type="button">Save to GitHub</button>
+          <label class="file-button">
+            Import JSON
+            <input id="importFile" type="file" accept="application/json">
+          </label>
+          <button id="exportButton" type="button">Export JSON</button>
+        </div>
+      </header>
+
+      <section class="github-panel panel">
+        <div>
+          <h2>Repository connection</h2>
+          <p id="statusText">Paste a token and repository URL, then connect.</p>
+        </div>
+        <label>
+          GitHub token
+          <input id="githubToken" type="password" placeholder="Fine-grained token with Contents read/write">
+        </label>
+        <label>
+          Repository URL
+          <input id="repoUrl" type="url" placeholder="https://github.com/owner/repo">
+        </label>
+        <button id="forgetTokenButton" type="button">Forget token</button>
+      </section>
+
+      <section class="config-summary panel">
+        <h2>Active repository</h2>
+        <dl>
+          <div><dt>Repository</dt><dd id="repoSummary">Not connected</dd></div>
+          <div><dt>Config</dt><dd id="configSummary">admin.config.json</dd></div>
+          <div><dt>Data</dt><dd id="dataSummary">Not loaded</dd></div>
+        </dl>
+      </section>
+
+      <section class="layout">
+        <form id="pageForm" class="panel" autocomplete="off">
+          <h2 id="formTitle">New page</h2>
+
+          <label>
+            Type
+            <select id="pageType" name="type">
+              <option value="page">Page</option>
+              <option value="gallery">Gallery</option>
+            </select>
+          </label>
+
+          <label class="checkbox-label">
+            <input id="published" name="published" type="checkbox" checked>
+            Published
+          </label>
+
+          <label>
+            ID
+            <input id="pageId" name="id" type="text" placeholder="page-1" required>
+          </label>
+
+          <label>
+            Slug
+            <input id="slug" name="slug" type="text" placeholder="page-1" required>
+          </label>
+
+          <label>
+            Title
+            <input id="title" name="title" type="text" placeholder="My first page" required>
+          </label>
+
+          <label>
+            Subtitle
+            <input id="subtitle" name="subtitle" type="text" placeholder="A short description">
+          </label>
+
+          <label>
+            Body text
+            <textarea id="body" name="body" rows="10" placeholder="Write page content here"></textarea>
+          </label>
+
+          <fieldset>
+            <legend>Cover image</legend>
+            <img id="coverPreview" class="image-preview" alt="">
+            <label>
+              Upload image
+              <input id="coverFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+            </label>
+            <p class="field-note">Max 2 MB. JPG, PNG, WebP, or GIF.</p>
+            <label>
+              Image URL or repo path
+              <input id="coverSrc" type="text" placeholder="data/assets/page-1/cover.jpg">
+            </label>
+            <label>
+              Alt text
+              <input id="coverAlt" type="text" placeholder="Describe the image">
+            </label>
+            <label>
+              Caption
+              <input id="coverCaption" type="text" placeholder="Optional caption">
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <div class="fieldset-heading">
+              <legend>Images</legend>
+              <button id="addImageButton" type="button">Add image</button>
+            </div>
+            <div id="imageFields" class="image-fields"></div>
+          </fieldset>
+
+          <div class="form-actions">
+            <button id="saveButton" type="submit">Save page</button>
+            <button id="resetButton" type="button">Clear</button>
+          </div>
+        </form>
+
+        <section class="panel">
+          <div class="list-heading">
+            <h2>Pages</h2>
+            <span id="countBadge">0 records</span>
+          </div>
+          <div id="pageList" class="page-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="admin.js"></script>
+  </body>
+</html>
