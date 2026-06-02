@@ -299,14 +299,14 @@ function normalizeMetaItem(item, page, index) {
 
   return {
     id,
-    slug: String(item.slug || page?.slug || id),
-    type: String(item.type || page?.type || "page"),
-    title: String(item.title || page?.title || id),
-    subtitle: String(item.subtitle || page?.subtitle || ""),
-    published: Boolean(item.published ?? page?.published ?? true),
+    slug: String(page?.slug || item.slug || id),
+    type: String(page?.type || item.type || "page"),
+    title: String(page?.title || item.title || id),
+    subtitle: String(page?.subtitle ?? item.subtitle ?? ""),
+    published: Boolean(page?.published ?? item.published ?? true),
     order: Number(item.order ?? index + 1),
     file: String(item.file || pageFilePath(id)),
-    updatedAt: String(item.updatedAt || page?.updatedAt || new Date().toISOString())
+    updatedAt: String(page?.updatedAt || item.updatedAt || new Date().toISOString())
   };
 }
 
