@@ -68,6 +68,11 @@
             </select>
           </label>
 
+          <label>
+            Template
+            <input id="template" name="template" type="text" placeholder="Uses type by default, e.g. gallery-grid">
+          </label>
+
           <label class="checkbox-label">
             <input id="published" name="published" type="checkbox" checked>
             Published
@@ -142,6 +147,17 @@
           </div>
           <div id="pageList" class="page-list"></div>
         </section>
+      </section>
+
+      <section class="panel navigation-panel">
+        <div class="list-heading">
+          <div>
+            <h2>Navigation</h2>
+            <p class="field-note">Edit menu labels, order, and targets. Layout stays in the site templates.</p>
+          </div>
+          <button id="addMenuItemButton" type="button">Add item</button>
+        </div>
+        <div id="navigationItems" class="navigation-items"></div>
       </section>
 
       <section id="previewPanel" class="panel preview-panel" hidden>

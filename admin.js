@@ -55,6 +55,22 @@ const closePreviewButton = document.querySelector("#closePreviewButton");
 const navigationItems = document.querySelector("#navigationItems");
 const addMenuItemButton = document.querySelector("#addMenuItemButton");
 
+const requiredElements = {
+  form,
+  pageType,
+  template,
+  navigationItems,
+  addMenuItemButton,
+  statusText
+};
+const missingElements = Object.entries(requiredElements)
+  .filter(([, element]) => !element)
+  .map(([name]) => name);
+
+if (missingElements.length) {
+  throw new Error(`Admin HTML is missing required elements: ${missingElements.join(", ")}`);
+}
+
 let db = loadLocalDb();
 let editingId = null;
 let metaSha = null;
