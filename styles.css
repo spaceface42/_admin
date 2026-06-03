@@ -347,6 +347,38 @@ textarea {
   margin-top: 20px;
 }
 
+.navigation-panel {
+  margin-top: 20px;
+}
+
+.navigation-panel .list-heading {
+  align-items: start;
+}
+
+.navigation-items {
+  display: grid;
+  gap: 12px;
+}
+
+.navigation-item {
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  padding: 14px;
+}
+
+.remove-navigation-button {
+  background: #e8edf2;
+  color: var(--text);
+}
+
+.remove-navigation-button:hover {
+  background: #d9e1e8;
+}
+
 .preview-content {
   border-top: 1px solid var(--line);
   margin-top: 14px;
@@ -444,6 +476,12 @@ textarea {
   }
 
   .page-row {
+    grid-template-columns: 1fr;
+  }
+
+  .navigation-panel .list-heading,
+  .navigation-item {
+    display: grid;
     grid-template-columns: 1fr;
   }
 }

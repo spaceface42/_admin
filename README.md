@@ -17,7 +17,7 @@ _blackhole
   data/
   public.source/
   scripts/
-  docs/
+  _docs/
 ```
 
 The admin connects to an administered repository through the GitHub API. It reads that repository's `admin.config.json`, then uses the configured paths to load and save JSON records and uploaded image files.
@@ -70,7 +70,7 @@ The admin uses GitHub's Git Data API to create one commit per save. That means p
 
 After saving, reconnecting and clicking **Load DB** should show the latest saved data from GitHub.
 
-The save status includes build progress. In `_blackhole`, the Action rebuilds `docs/` after content changes. The admin polls that workflow and reports when the build succeeds or fails.
+The save status includes build progress. In `_blackhole`, the Action builds and deploys the site after content changes. The admin polls that workflow and reports when the build succeeds or fails.
 
 ## Path Safety
 
@@ -85,6 +85,12 @@ External image URLs are still allowed for image fields, but uploaded files are a
 ## Preview
 
 Use **Preview** to render the current form before saving. This preview is approximate, but it uses the same title, subtitle, body, cover image, and gallery data that will be written to JSON.
+
+## Templates And Navigation
+
+The admin can edit a page's optional `template` field. If it is left blank, the site build uses the page type as the template name.
+
+The admin also edits the main menu from `data/navigation.json`. Menu items can point to an existing page or to a direct URL. The menu data controls labels, order, and targets; the administered site's templates and CSS control the visual design.
 
 ## Roadmap
 
@@ -106,7 +112,4 @@ The default config used by `_blackhole` is documented in that repository.
 
 The admin only writes JSON and uploaded files. It does not build the public site in the browser.
 
-The administered repo is responsible for turning JSON into generated HTML, either by:
-
-- running its build script locally and committing `docs/`, or
-- using GitHub Actions to rebuild and publish after content changes.
+The administered repo is responsible for turning JSON into generated HTML. For `_blackhole`, GitHub Actions builds `_docs/` and deploys that output through GitHub Pages artifacts.

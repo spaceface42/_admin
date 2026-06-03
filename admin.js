@@ -1,6 +1,7 @@
 let repoOwner = "";
 let repoName = "";
 let metaPath = "data/meta.json";
+let navigationPath = "data/navigation.json";
 let pagesDir = "data/pages";
 let assetsDir = "data/assets";
 const configPath = "admin.config.json";
@@ -15,6 +16,7 @@ let repoApiBase = "";
 const form = document.querySelector("#pageForm");
 const formTitle = document.querySelector("#formTitle");
 const pageType = document.querySelector("#pageType");
+const template = document.querySelector("#template");
 const published = document.querySelector("#published");
 const pageId = document.querySelector("#pageId");
 const slug = document.querySelector("#slug");
@@ -50,10 +52,13 @@ const previewButton = document.querySelector("#previewButton");
 const previewPanel = document.querySelector("#previewPanel");
 const previewContent = document.querySelector("#previewContent");
 const closePreviewButton = document.querySelector("#closePreviewButton");
+const navigationItems = document.querySelector("#navigationItems");
+const addMenuItemButton = document.querySelector("#addMenuItemButton");
 
 let db = loadLocalDb();
 let editingId = null;
 let metaSha = null;
+let navigationSha = null;
 let pageShas = {};
 let deletedPageFiles = [];
 let branch = "main";
@@ -68,7 +73,7 @@ githubToken.value = rememberToken.checked ? localStorage.getItem(tokenKey) || ""
 repoUrl.value = localStorage.getItem(repoUrlKey) || "";
 
 function emptyDb() {
-  return { meta: { version: 1, pages: [] }, pages: {} };
+  return { meta: { version: 1, pages: [] }, navigation: { main: [] }, pages: {} };
 }
 
 function pageFilePath(id) {
@@ -89,6 +94,7 @@ function parseRepoUrl(value) {
 function applyConfig(config) {
   siteConfig = config || {};
   metaPath = validateRepoPath(config.paths?.meta || "data/meta.json", "meta path");
+  navigationPath = validateRepoPath(config.paths?.navigation || "data/navigation.json", "navigation path");
   pagesDir = validateRepoPath(config.paths?.pages || "data/pages", "pages path");
   assetsDir = validateRepoPath(config.paths?.assets || "data/assets", "assets path");
   maxImageSize = Number(config.uploads?.maxImageSize) || maxImageSize;
@@ -99,7 +105,7 @@ function applyConfig(config) {
   actionsUrl = `https://github.com/${repoOwner}/${repoName}/actions`;
   renderContentTypes(config.contentTypes || []);
   configSummary.textContent = `${config.name || "Configured site"} (${configPath})`;
-  dataSummary.textContent = `${metaPath}, ${pagesDir}, ${assetsDir}`;
+  dataSummary.textContent = `${metaPath}, ${navigationPath}, ${pagesDir}, ${assetsDir}`;
   renderSummaryLink(publicSiteSummary, previewUrl, previewUrl || "Not configured");
   renderSummaryLink(buildSummary, actionsUrl, "Actions");
 }
@@ -221,6 +227,7 @@ async function connectRepository() {
     db = loadLocalDb();
     resetForm();
     renderPages();
+    renderNavigation();
     setBuildStatus("No build checked yet");
     setStatus(`Connected to ${repoOwner}/${repoName}.`);
   } catch (error) {
@@ -278,7 +285,24 @@ function normalizeDb(value) {
     next.meta = buildMetaFromPages(next.pages);
   }
 
+  next.navigation = normalizeNavigation(value.navigation);
+
   return next;
+}
+
+function normalizeNavigation(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const main = Array.isArray(source.main) ? source.main : [];
+
+  return {
+    main: main
+      .map((item) => ({
+        label: String(item?.label || ""),
+        page: String(item?.page || ""),
+        href: String(item?.href || "")
+      }))
+      .filter((item) => item.label || item.page || item.href)
+  };
 }
 
 function normalizeMeta(meta, pages) {
@@ -316,7 +340,8 @@ function normalizePage(page) {
   return {
     id,
     slug: String(page?.slug || id),
-    type: page?.type === "gallery" ? "gallery" : "page",
+    type: String(page?.type || "page"),
+    template: String(page?.template || ""),
     title: String(page?.title || id),
     subtitle: String(page?.subtitle || ""),
     body: String(page?.body || ""),
@@ -351,6 +376,7 @@ function buildMetaFromPages(pages) {
 
 function validateDbPaths() {
   validateRepoPath(metaPath, "meta path");
+  validateRepoPath(navigationPath, "navigation path");
 
   for (const item of db.meta.pages) {
     item.file = validatePathInDir(item.file || pageFilePath(item.id), pagesDir, `page file for ${item.id}`);
@@ -732,6 +758,14 @@ async function commitDatabaseChanges() {
     sha: metaBlob.sha
   });
 
+  const navigationBlob = await createBlob(jsonFileContent(db.navigation));
+  treeEntries.push({
+    path: validateRepoPath(navigationPath, "navigation path"),
+    mode: "100644",
+    type: "blob",
+    sha: navigationBlob.sha
+  });
+
   for (const item of pendingFiles) {
     validateImageFile(item.file);
     const filePath = validatePathInDir(item.path, assetsDir, item.label);
@@ -770,6 +804,7 @@ async function commitDatabaseChanges() {
   clearPendingFiles(pendingFiles);
   deletedPageFiles = [];
   metaSha = null;
+  navigationSha = null;
   pageShas = {};
   saveLocalDb();
 
@@ -786,7 +821,9 @@ async function listWorkflowRunsForCommit(commitSha) {
 
   const payload = await githubJsonRequest(`/actions/runs?${query.toString()}`);
 
-  return (payload.workflow_runs || []).filter((run) => run.name === "Build docs");
+  return (payload.workflow_runs || []).filter((run) =>
+    ["Build and deploy site", "Build docs"].includes(run.name)
+  );
 }
 
 async function waitForDocsBuild(commitSha) {
@@ -801,19 +838,19 @@ async function waitForDocsBuild(commitSha) {
     const run = runs[0];
 
     if (!run) {
-      setBuildStatus(`Waiting for docs build to start...`);
+      setBuildStatus(`Waiting for site build to start...`);
     } else if (run.status === "completed") {
       if (run.conclusion === "success") {
         const label = previewUrl ? `Build completed. Open public site.` : `Build completed.`;
         setBuildStatus(label, previewUrl || run.html_url);
         setStatus(
           previewUrl
-            ? `GitHub save and docs build completed. Public site: ${previewUrl}`
-            : `GitHub save and docs build completed.`
+            ? `GitHub save and site build completed. Public site: ${previewUrl}`
+            : `GitHub save and site build completed.`
         );
       } else {
         setBuildStatus(`Build ${run.conclusion}. View Actions.`, run.html_url);
-        setStatus(`GitHub save succeeded, but docs build ${run.conclusion}. Check Actions: ${run.html_url}`);
+        setStatus(`GitHub save succeeded, but site build ${run.conclusion}. Check Actions: ${run.html_url}`);
       }
 
       return;
@@ -825,7 +862,7 @@ async function waitForDocsBuild(commitSha) {
   }
 
   setBuildStatus(`Build not finished yet. View Actions.`, actionsUrl);
-  setStatus(`GitHub save succeeded. Docs build is still running or delayed: ${actionsUrl}`);
+  setStatus(`GitHub save succeeded. Site build is still running or delayed: ${actionsUrl}`);
 }
 
 async function loadGithubDb() {
@@ -849,18 +886,33 @@ async function loadGithubDb() {
 
       db = emptyDb();
       metaSha = null;
+      navigationSha = null;
       pageShas = {};
       deletedPageFiles = [];
       saveLocalDb();
       resetForm();
       renderPages();
+      renderNavigation();
       setStatus(`${metaPath} does not exist yet. Add a page, then Save to GitHub to create it.`);
       return;
     }
 
     const meta = JSON.parse(decodeBase64(metaPayload.content));
+    let navigation = { main: [] };
+    let nextNavigationSha = null;
     const nextPages = {};
     const nextPageShas = {};
+
+    try {
+      setStatus(`Loading ${navigationPath}...`);
+      const navigationPayload = await loadGithubFile(navigationPath);
+      navigation = JSON.parse(decodeBase64(navigationPayload.content));
+      nextNavigationSha = navigationPayload.sha;
+    } catch (error) {
+      if (!isMissingFileError(error)) {
+        throw error;
+      }
+    }
 
     for (const item of meta.pages || []) {
       const itemFile = validatePathInDir(item.file || pageFilePath(item.id), pagesDir, `page file for ${item.id}`);
@@ -873,14 +925,17 @@ async function loadGithubDb() {
 
     db = {
       meta: normalizeMeta(meta, nextPages),
+      navigation: normalizeNavigation(navigation),
       pages: nextPages
     };
     metaSha = metaPayload.sha;
+    navigationSha = nextNavigationSha;
     pageShas = nextPageShas;
     deletedPageFiles = [];
     saveLocalDb();
     resetForm();
     renderPages();
+    renderNavigation();
     lastSavedHeadSha = null;
     setBuildStatus("No build checked yet");
     setStatus(`Loaded ${db.meta.pages.length} records from ${repoOwner}/${repoName}.`);
@@ -899,6 +954,8 @@ async function saveGithubDb() {
       return;
     }
 
+    db.navigation = readNavigationRows();
+    saveLocalDb();
     setBusy(true);
     setStatus("Checking GitHub repository...");
     await loadRepoInfo();
@@ -912,8 +969,8 @@ async function saveGithubDb() {
 
     setStatus(
       result.changed
-        ? `Saved ${db.meta.pages.length} records in one Git commit: ${result.sha.slice(0, 7)}. Waiting for docs build...`
-        : `No Git changes to save. Docs are already based on the latest committed data.`
+        ? `Saved ${db.meta.pages.length} records in one Git commit: ${result.sha.slice(0, 7)}. Waiting for site build...`
+        : `No Git changes to save. Site output is already based on the latest committed data.`
     );
 
     if (result.changed) {
@@ -997,6 +1054,7 @@ function resetForm() {
   editingId = null;
   form.reset();
   pageType.value = "page";
+  template.value = "";
   published.checked = true;
   coverPreview.removeAttribute("src");
   imageFields.innerHTML = "";
@@ -1054,6 +1112,84 @@ function renderPages() {
     });
 }
 
+function pageOptionsHtml(selected = "") {
+  const options = ['<option value="">Direct URL</option>'];
+
+  db.meta.pages
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .forEach((item) => {
+      const value = item.slug || item.id;
+      const label = `${item.title || item.id} (${value})`;
+      const selectedAttribute = value === selected || item.id === selected ? " selected" : "";
+      options.push(`<option value="${escapeAttribute(value)}"${selectedAttribute}>${escapeHtml(label)}</option>`);
+    });
+
+  return options.join("");
+}
+
+function renderNavigation() {
+  navigationItems.innerHTML = "";
+
+  const items = normalizeNavigation(db.navigation).main;
+
+  if (items.length === 0) {
+    addNavigationRow();
+    return;
+  }
+
+  items.forEach(addNavigationRow);
+}
+
+function addNavigationRow(item = {}) {
+  const row = document.createElement("div");
+  row.className = "navigation-item";
+
+  row.innerHTML = `
+    <label>
+      Label
+      <input class="navigation-label" type="text" value="${escapeAttribute(item.label || "")}" placeholder="Work">
+    </label>
+    <label>
+      Page
+      <select class="navigation-page">${pageOptionsHtml(item.page || "")}</select>
+    </label>
+    <label>
+      Direct URL
+      <input class="navigation-href" type="text" value="${escapeAttribute(item.href || "")}" placeholder="https://example.com">
+    </label>
+    <button class="remove-navigation-button" type="button">Remove</button>
+  `;
+
+  row.querySelector(".remove-navigation-button").addEventListener("click", () => {
+    row.remove();
+
+    if (!navigationItems.children.length) {
+      addNavigationRow();
+    }
+  });
+
+  navigationItems.append(row);
+}
+
+function readNavigationRows() {
+  const main = [];
+
+  for (const row of navigationItems.querySelectorAll(".navigation-item")) {
+    const label = row.querySelector(".navigation-label").value.trim();
+    const page = row.querySelector(".navigation-page").value.trim();
+    const href = row.querySelector(".navigation-href").value.trim();
+
+    if (!label && !page && !href) {
+      continue;
+    }
+
+    main.push({ label, page, href: page ? "" : href });
+  }
+
+  return normalizeNavigation({ main });
+}
+
 function editPage(id) {
   const page = db.pages[id];
 
@@ -1064,6 +1200,7 @@ function editPage(id) {
   editingId = id;
   formTitle.textContent = `Edit ${id}`;
   pageType.value = page.type;
+  template.value = page.template || "";
   published.checked = page.published;
   pageId.value = page.id;
   pageId.disabled = true;
@@ -1092,6 +1229,7 @@ function deletePage(id) {
   saveLocalDb();
   resetForm();
   renderPages();
+  renderNavigation();
   setStatus(`Deleted ${id} locally. Save to GitHub when ready.`);
 }
 
@@ -1099,6 +1237,7 @@ function formHasDraft() {
   return Boolean(
     editingId ||
       pageId.value.trim() ||
+      template.value.trim() ||
       slug.value.trim() ||
       title.value.trim() ||
       subtitle.value.trim() ||
@@ -1150,6 +1289,7 @@ function upsertPage(event) {
     id,
     slug: slugify(slug.value.trim() || id),
     type: pageType.value,
+    template: template.value.trim(),
     title: title.value.trim(),
     subtitle: subtitle.value.trim(),
     body: body.value.trim(),
@@ -1177,6 +1317,7 @@ function upsertPage(event) {
   saveLocalDb();
   resetForm();
   renderPages();
+  renderNavigation();
   const hasPendingUpload = Boolean(record.coverImage?.pendingFile || record.images.some((image) => image.pendingFile));
   setStatus(
     hasPendingUpload
@@ -1325,6 +1466,7 @@ function currentFormRecordForPreview() {
 
   return {
     title: title.value.trim() || "Untitled",
+    template: template.value.trim(),
     subtitle: subtitle.value.trim(),
     body: body.value.trim(),
     coverImage: coverSrc.value.trim()
@@ -1390,6 +1532,8 @@ function readImageRows() {
 }
 
 function exportJson() {
+  db.navigation = readNavigationRows();
+  saveLocalDb();
   const blob = new Blob([JSON.stringify(stripPendingFiles(db), null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -1419,6 +1563,7 @@ function importJson(event) {
       saveLocalDb();
       resetForm();
       renderPages();
+      renderNavigation();
       setStatus(`Imported ${db.meta.pages.length} records locally. Save to GitHub when ready.`);
     } catch (error) {
       alert(`Could not import JSON: ${error.message}`);
@@ -1470,6 +1615,7 @@ coverSrc.addEventListener("input", () => {
 form.addEventListener("submit", upsertPage);
 resetButton.addEventListener("click", resetForm);
 addImageButton.addEventListener("click", () => addImageRow());
+addMenuItemButton.addEventListener("click", () => addNavigationRow());
 exportButton.addEventListener("click", exportJson);
 importFile.addEventListener("change", importJson);
 connectButton.addEventListener("click", connectRepository);
@@ -1495,3 +1641,4 @@ forgetTokenButton.addEventListener("click", () => {
 });
 
 renderPages();
+renderNavigation();
