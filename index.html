@@ -11,58 +11,47 @@
       <header class="topbar">
         <div>
           <h1>JSON Site Admin</h1>
-          <p>Manage JSON content and uploaded assets for a configured GitHub repository.</p>
+          <p>Edit JSON content, navigation, and uploaded assets for a configured GitHub repository.</p>
         </div>
         <div class="actions">
           <button id="connectButton" type="button">Connect</button>
-          <button id="loadGithubButton" type="button">Load DB</button>
-          <button id="saveGithubButton" type="button">Save to GitHub</button>
-          <label class="file-button">
-            Import JSON
-            <input id="importFile" type="file" accept="application/json">
-          </label>
-          <button id="exportButton" type="button">Export JSON</button>
+          <button id="loadButton" type="button">Load DB</button>
+          <button id="saveButton" type="button">Save to GitHub</button>
         </div>
       </header>
 
-      <section class="github-panel panel">
+      <section class="panel connection-panel">
         <div>
-          <h2>Repository connection</h2>
+          <h2>Repository</h2>
           <p id="statusText">Paste a token and repository URL, then connect.</p>
         </div>
         <label>
           GitHub token
           <input id="githubToken" type="password" placeholder="Fine-grained token with Contents read/write">
         </label>
-        <label class="checkbox-label remember-label">
-          <input id="rememberToken" type="checkbox" checked>
-          Remember token
-        </label>
         <label>
           Repository URL
           <input id="repoUrl" type="url" placeholder="https://github.com/owner/repo">
         </label>
-        <button id="forgetTokenButton" type="button">Forget token</button>
       </section>
 
-      <section class="config-summary panel">
-        <h2>Active repository</h2>
+      <section class="panel summary-panel">
+        <h2>Active Site</h2>
         <dl>
           <div><dt>Repository</dt><dd id="repoSummary">Not connected</dd></div>
-          <div><dt>Config</dt><dd id="configSummary">admin.config.json</dd></div>
           <div><dt>Data</dt><dd id="dataSummary">Not loaded</dd></div>
-          <div><dt>Public site</dt><dd id="publicSiteSummary">Not configured</dd></div>
+          <div><dt>Public site</dt><dd id="siteSummary">Not configured</dd></div>
           <div><dt>Build</dt><dd id="buildSummary">No build checked yet</dd></div>
         </dl>
       </section>
 
       <section class="layout">
         <form id="pageForm" class="panel" autocomplete="off">
-          <h2 id="formTitle">New page</h2>
+          <h2 id="formTitle">New Page</h2>
 
           <label>
             Type
-            <select id="pageType" name="type">
+            <select id="pageType">
               <option value="page">Page</option>
               <option value="gallery">Gallery</option>
             </select>
@@ -70,37 +59,37 @@
 
           <label>
             Template
-            <input id="template" name="template" type="text" placeholder="Uses type by default, e.g. gallery-grid">
+            <input id="template" type="text" placeholder="Blank uses type, e.g. gallery-grid">
           </label>
 
           <label class="checkbox-label">
-            <input id="published" name="published" type="checkbox" checked>
+            <input id="published" type="checkbox" checked>
             Published
           </label>
 
           <label>
             ID
-            <input id="pageId" name="id" type="text" placeholder="page-1" required>
+            <input id="pageId" type="text" placeholder="about" required>
           </label>
 
           <label>
             Slug
-            <input id="slug" name="slug" type="text" placeholder="page-1" required>
+            <input id="slug" type="text" placeholder="about" required>
           </label>
 
           <label>
             Title
-            <input id="title" name="title" type="text" placeholder="My first page" required>
+            <input id="title" type="text" placeholder="About" required>
           </label>
 
           <label>
             Subtitle
-            <input id="subtitle" name="subtitle" type="text" placeholder="A short description">
+            <input id="subtitle" type="text" placeholder="Short subtitle">
           </label>
 
           <label>
-            Body text
-            <textarea id="body" name="body" rows="10" placeholder="Write page content here"></textarea>
+            Body
+            <textarea id="body" rows="8" placeholder="Write page text here"></textarea>
           </label>
 
           <fieldset>
@@ -108,35 +97,33 @@
             <img id="coverPreview" class="image-preview" alt="">
             <label>
               Upload image
-              <input id="coverFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+              <input id="coverFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml">
             </label>
-            <p class="field-note">Max 2 MB. JPG, PNG, WebP, or GIF.</p>
             <label>
-              Image URL or repo path
-              <input id="coverSrc" type="text" placeholder="data/assets/page-1/cover.jpg">
+              Image path or URL
+              <input id="coverSrc" type="text" placeholder="data/assets/about/cover.png">
             </label>
             <label>
               Alt text
-              <input id="coverAlt" type="text" placeholder="Describe the image">
+              <input id="coverAlt" type="text">
             </label>
             <label>
               Caption
-              <input id="coverCaption" type="text" placeholder="Optional caption">
+              <input id="coverCaption" type="text">
             </label>
           </fieldset>
 
           <fieldset>
             <div class="fieldset-heading">
-              <legend>Images</legend>
+              <legend>Gallery images</legend>
               <button id="addImageButton" type="button">Add image</button>
             </div>
             <div id="imageFields" class="image-fields"></div>
           </fieldset>
 
           <div class="form-actions">
-            <button id="saveButton" type="submit">Save page</button>
-            <button id="previewButton" type="button">Preview</button>
-            <button id="resetButton" type="button">Clear</button>
+            <button id="saveLocalButton" type="submit">Save page locally</button>
+            <button id="clearButton" type="button">Clear</button>
           </div>
         </form>
 
@@ -153,19 +140,11 @@
         <div class="list-heading">
           <div>
             <h2>Navigation</h2>
-            <p class="field-note">Edit menu labels, order, and targets. Layout stays in the site templates.</p>
+            <p class="field-note">Edit labels, order, and targets. Design stays in templates and CSS.</p>
           </div>
           <button id="addMenuItemButton" type="button">Add item</button>
         </div>
         <div id="navigationItems" class="navigation-items"></div>
-      </section>
-
-      <section id="previewPanel" class="panel preview-panel" hidden>
-        <div class="list-heading">
-          <h2>Preview</h2>
-          <button id="closePreviewButton" type="button">Close</button>
-        </div>
-        <div id="previewContent" class="preview-content"></div>
       </section>
     </main>
 
