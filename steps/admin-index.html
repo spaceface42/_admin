@@ -933,10 +933,23 @@ function labelChanged(f){
   return f.label!==orig;
 }
 
+/* Rewrite media src URLs in fragment HTML so the sandboxed preview iframe
+   can load images directly from GitHub raw content (draft branch), rather
+   than trying to resolve site-relative paths that only work after publish. */
+function rewritePreviewUrls(html){
+  if(!state.owner || !state.repo) return html;
+  const prefix=mediaPrefix(); // e.g. '/assets/media/'
+  const dir=mediaDir();        // e.g. 'docs/assets/media'
+  if(!prefix || !dir) return html;
+  const rawBase=`https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(state.workBranch)}/${dir}/`;
+  const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  return html.replace(new RegExp(`(src=["'])${esc(prefix)}`,'gi'),`$1${rawBase}`);
+}
+
 function updatePreview(f){
   el('preview').srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8">
     <style>body{font-family:system-ui,sans-serif;margin:18px;color:#1a1a1a}</style></head>
-    <body>${rebuildFragment(f)}</body></html>`;
+    <body>${rewritePreviewUrls(rebuildFragment(f))}</body></html>`;
 }
 
 function updateUnsavedBar(){
@@ -1254,17 +1267,21 @@ function setMediaGridEmpty(msg){
 async function openMedia(){
   clearMediaErr();
   el('mediaModal').classList.add('show');
+  // Ensure config is loaded so mediaDir() returns the correct path from gitcms.config.json.
+  if(!gitcmsConfigLoaded) await loadGitCMSConfig();
   updateMediaDirNote();
   await loadMedia();
 }
 
-async function loadMedia(){
-  clearMediaErr();
+async function loadMedia(silent=false){
+  if(!silent) clearMediaErr();
   const dir=mediaDir();
-  if(!dir){ showMediaErr('Set a repository folder first.'); return; }
+  if(!dir){ if(!silent) showMediaErr('Set a repository folder first.'); return; }
 
   const grid=el('mediaGrid');
-  setMediaGridEmpty('Loading images…');
+  // In silent mode (background refresh after upload) we don't wipe the grid
+  // until we have the new data, so thumbnails stay visible.
+  if(!silent) setMediaGridEmpty('Loading images…');
 
   try{
     const items=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(dir)}?ref=${encodeURIComponent(state.workBranch)}`);
@@ -1280,6 +1297,7 @@ async function loadMedia(){
       renderMediaCard(item);
     }
   }catch(e){
+    if(silent) return; // ignore errors on background refresh
     if(e.status===404){
       setMediaGridEmpty(`Folder not found yet: ${dir}. Upload an image to create it.`);
     }else{
@@ -1375,6 +1393,7 @@ async function uploadMediaFiles(){
 
   try{
     const stamp=new Date().toISOString().replace(/[:.]/g,'-').replace('T','-').slice(0,19);
+    const uploaded=[];
     for(let i=0;i<files.length;i++){
       const file=files[i];
       if(!file.type.startsWith('image/')) throw new Error(file.name+' is not an image.');
@@ -1385,10 +1404,20 @@ async function uploadMediaFiles(){
         method:'PUT',
         body:{message:'cms: upload media '+name,content,branch:state.workBranch}
       });
+      uploaded.push({name, path, size:file.size, type:'file'});
     }
     input.value='';
     toast(files.length===1?'Image uploaded to draft':'Images uploaded to draft','ok');
-    await loadMedia();
+
+    // Show uploaded files in the grid immediately — don't wait for GitHub's API
+    // to update its directory listing (can take a few seconds after a write).
+    const grid=el('mediaGrid');
+    if(grid.querySelector('.media-empty')) grid.innerHTML='';
+    for(const item of uploaded) renderMediaCard(item);
+
+    // Background refresh after a short delay to get the full sorted list from API.
+    // silent=true so the grid isn't cleared while waiting for the response.
+    sleep(1500).then(()=>loadMedia(true));
   }catch(e){
     showMediaErr('Upload failed: '+e.message);
     toast('Upload failed','err');
