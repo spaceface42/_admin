@@ -1,0 +1,42 @@
+[
+  {
+    "id": "hero",
+    "file": "docs/index.html",
+    "label": "Hero Section"
+  },
+  {
+    "id": "intro",
+    "file": "docs/index.html",
+    "label": "Introduction"
+  },
+  {
+    "id": "features",
+    "file": "docs/index.html",
+    "label": "Features"
+  },
+  {
+    "id": "cta",
+    "file": "docs/index.html",
+    "label": "Call to Action"
+  },
+  {
+    "id": "mission",
+    "file": "docs/about.html",
+    "label": "Mission Statement"
+  },
+  {
+    "id": "team",
+    "file": "docs/about.html",
+    "label": "Team"
+  },
+  {
+    "id": "map",
+    "file": "docs/contact.html",
+    "label": "Location Map"
+  },
+  {
+    "id": "contact",
+    "file": "docs/contact.html",
+    "label": "Contact Form"
+  }
+]
