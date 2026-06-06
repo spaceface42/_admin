@@ -82,81 +82,25 @@ function labelChanged(f){
   return f.label!==orig;
 }
 
-/* Rewrite media src URLs in fragment HTML so the sandboxed preview iframe
-   can load images directly from GitHub raw content (work branch), rather
-   than trying to resolve site-relative paths that only work after publish. */
+function previewPathContext(){
+  return {
+    owner:state.owner,
+    repo:state.repo,
+    ref:contentAssetRef(),
+    mediaPrefix:mediaPrefix(),
+    mediaDir:mediaDir(),
+    version:Date.now()
+  };
+}
+
 function rewritePreviewUrls(html){
-  if(!state.owner || !state.repo) return html;
-  const prefix=mediaPrefix(); // e.g. 'assets/media/' for GitHub Pages project sites
-  const dir=mediaDir();       // e.g. 'docs/assets/media'
-  if(!prefix || !dir || prefix.includes('{path}') || prefix.includes('{file}')) return html;
-  const encodedDir=dir.split('/').map(encodeURIComponent).join('/');
-  const rawBase=`https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(contentAssetRef())}/${encodedDir}/`;
-  const escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  const version=Date.now();
-  return html.replace(new RegExp(`(src=["'])${escRe(prefix)}([^"']+)(["'])`,'gi'),(m,start,rest,end)=>{
-    const sep=rest.includes('?') ? '&' : '?';
-    return `${start}${rawBase}${rest}${sep}v=${version}${end}`;
-  });
+  return PreviewPaths.rewriteFragmentMediaUrls(html,previewPathContext());
 }
 
-
-function isExternalOrSpecialUrl(url){
-  return /^(https?:|data:|blob:|mailto:|tel:|javascript:|#)/i.test(String(url||'').trim());
-}
-function normalizePathParts(path){
-  const parts=[];
-  for(const part of String(path||'').split('/')){
-    if(!part || part==='.') continue;
-    if(part==='..') parts.pop();
-    else parts.push(part);
-  }
-  return parts.join('/');
-}
-function resolveRepoRelativeUrl(url,filePath){
-  const raw=String(url||'').trim();
-  if(!raw || isExternalOrSpecialUrl(raw)) return null;
-
-  const [pathPart, suffixPart=''] = raw.split(/([?#].*)/,2);
-  const suffix=raw.slice(pathPart.length);
-
-  // Root-style site path, useful if old content still has /assets/...
-  if(pathPart.startsWith('/')){
-    return normalizePathParts('docs/' + pathPart.replace(/^\/+/,'') ) + suffix;
-  }
-
-  const dir=normalizeRepoPath(filePath).split('/').slice(0,-1).join('/');
-  return normalizePathParts((dir ? dir + '/' : '') + pathPart) + suffix;
-}
-function rawUrlForPreviewAsset(url,filePath){
-  const repoPath=resolveRepoRelativeUrl(url,filePath);
-  if(!repoPath) return url;
-  const [pathOnly, suffix=''] = repoPath.split(/([?#].*)/,2);
-  const realSuffix=repoPath.slice(pathOnly.length);
-  return rawUrlForRepoPath(pathOnly) + realSuffix + (realSuffix ? '&' : '?') + 'v=' + Date.now();
-}
 function rewriteFullPageAssetUrls(pageHtml,filePath){
-  return String(pageHtml||'')
-    .replace(/\s(href)=["']([^"']+)["']/gi,(m,attr,url)=>{
-      // Only rewrite stylesheet links and common local asset hrefs.
-      if(isExternalOrSpecialUrl(url)) return m;
-      if(!/\.(css|ico|png|jpe?g|gif|webp|svg|avif)([?#].*)?$/i.test(url)) return m;
-      return ` ${attr}="${escAttr(rawUrlForPreviewAsset(url,filePath))}"`;
-    })
-    .replace(/\s(src|poster)=["']([^"']+)["']/gi,(m,attr,url)=>{
-      if(isExternalOrSpecialUrl(url)) return m;
-      return ` ${attr}="${escAttr(rawUrlForPreviewAsset(url,filePath))}"`;
-    })
-    .replace(/\s(srcset)=["']([^"']+)["']/gi,(m,attr,value)=>{
-      const rewritten=value.split(',').map(part=>{
-        const bits=part.trim().split(/\s+/);
-        if(!bits[0]) return part;
-        bits[0]=rawUrlForPreviewAsset(bits[0],filePath);
-        return bits.join(' ');
-      }).join(', ');
-      return ` ${attr}="${escAttr(rewritten)}"`;
-    });
+  return PreviewPaths.rewriteFullPageAssetUrls(pageHtml,filePath,previewPathContext());
 }
+
 function updatePreviewModeButtons(){
   const fragBtn=el('previewFragmentBtn');
   const pageBtn=el('previewPageBtn');

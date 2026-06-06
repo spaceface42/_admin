@@ -1,31 +1,53 @@
-# GitCMS v1.1.4 Complete Codebase
+# GitCMS
 
-This is the complete GitCMS codebase using the latest stable build:
+A small, zero-backend CMS for editing static HTML fragments through GitHub.
+
+Current stable version:
 
 ```txt
-GitCMS version: 1.1.4-content-tree-pinned-write
+1.1.28-release-hardening
 ```
 
-## Model
+## Branch model
 
 ```txt
-content = CMS source tree
+content = CMS source of truth
 main    = deploy target only
 ```
 
-The admin reads editable CMS data from the `content` branch and publishes to `main`.
+## Publish model
 
-## Included
+```txt
+Save    -> content
+Publish -> main
+```
+
+GitCMS does not merge `main` back into `content`.
+
+## Runtime files
+
+For the deployed CMS/site:
 
 ```txt
 admin.html
 gitcms.config.json
 fragments.json
 docs/
+```
+
+## Development files
+
+For editing/building/testing GitCMS:
+
+```txt
 src/
 tests/
 build-admin.mjs
 package.json
+eslint.config.mjs
+.prettierrc.json
+.prettierignore
+.github/workflows/quality.yml
 ```
 
 ## Build
@@ -34,39 +56,24 @@ package.json
 npm run build
 ```
 
-or:
-
-```bash
-node build-admin.mjs
-```
-
 ## Test
 
 ```bash
 npm test
 ```
 
-## Use
+## Recommended release check
 
-1. Rename/keep `admin.html`.
-2. Create a `content` branch if needed.
-3. Open `admin.html`.
-4. Connect using a GitHub token with Contents read/write access.
-5. Edit fragments.
-6. Save to `content`.
-7. Publish to `main`.
-
-## Required GitHub token permission
-
-Fine-grained PAT:
+Read and run:
 
 ```txt
-Contents: Read and write
+MANUAL_REGRESSION_TEST.md
 ```
 
-## Recommended GitHub Pages setup
+## Useful docs
 
 ```txt
-Branch: main
-Folder: docs/
+STABLE.md
+PUBLISH_WORKFLOW.md
+RELEASE_CHECKLIST.md
 ```

@@ -6,7 +6,7 @@ el('saveBtn').onclick=()=>{
   el('commitErr').classList.remove('show');
   // count siblings in same file that are also dirty
   const fileRec=state.files.get(f.path);
-  const dirtyInFile=fileRec.fragments.filter(id=>state.frags.get(id).dirty);
+  const dirtyInFile=Store.dirtyFragmentIdsForFile(fileRec);
   el('commitDesc').innerHTML = dirtyInFile.length>1
     ? `Saving <b>${dirtyInFile.length}</b> changed fragments in <span class="mono">${esc(f.path)}</span> to <b>${esc(state.workBranch)}</b> in one commit.`
     : `Saving changes to <span class="mono">${esc(f.path)}</span> on the <b>${esc(state.workBranch)}</b> branch.`;
@@ -24,7 +24,7 @@ async function doCommit(){
 
   const fileRec=state.files.get(f.path);
   try{
-    const dirtyIds=fileRec.fragments.filter(id=>state.frags.get(id)?.dirty);
+    const dirtyIds=Store.dirtyFragmentIdsForFile(fileRec);
     const htmlDirtyIds=dirtyIds.filter(id=>{
       const frag=state.frags.get(id);
       return frag && frag.innerHTML!==frag.origHTML;
@@ -73,9 +73,7 @@ async function doCommit(){
     }
 
     for(const id of dirtyIds){
-      const frag=state.frags.get(id);
-      frag.origHTML=frag.innerHTML;
-      frag.dirty=false;
+      Store.markFragmentClean(id);
     }
 
     el('commitModal').classList.remove('show');
@@ -93,10 +91,10 @@ async function doCommit(){
 }
 
 function commitErrMsg(e){
-  if(e.status===409) return `GitHub reported a write conflict. GitCMS retried once using the live ${esc(state.workBranch)} file, but it still failed. Refresh and try again.`;
-  if(e.status===422) return 'GitHub rejected the write (422). The branch or path may be invalid.';
-  if(e.status===403) return 'Forbidden (403) — the token lacks Contents: write on this repo.';
-  return 'Commit failed: '+esc(e.message);
+  return esc(GitHubErrors.githubErrorMessage(e,{
+    action:'Commit',
+    conflict:`GitHub reported a write conflict. GitCMS retried once using the live ${state.workBranch} file, but it still failed. Refresh and try again.`
+  }));
 }
 
 /* Replace a single fragment in file content. Throw if it cannot be

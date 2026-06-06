@@ -1,18 +1,11 @@
 /* ---------- image insert / alt text ---------- */
 let pendingMediaInsert=null;
 
-function altFromFilename(name){
-  return String(name||'')
-    .replace(/\.[^.]+$/,'')
-    .replace(/[-_]+/g,' ')
-    .replace(/\s+/g,' ')
-    .trim();
-}
 
 function openAltDialog(media){
   pendingMediaInsert=media;
   el('altImageName').textContent=media.name || media.url || '';
-  el('altTextInput').value=altFromFilename(media.name);
+  el('altTextInput').value=MediaUtils.altFromFilename(media.name);
   el('altDecorative').checked=false;
   el('altTextInput').disabled=false;
   el('altModal').classList.add('show');
@@ -28,7 +21,7 @@ function confirmAltInsert(){
   if(!pendingMediaInsert) return;
   const decorative=el('altDecorative').checked;
   const alt=decorative ? '' : el('altTextInput').value.trim();
-  const tag=`<img src="${escAttr(pendingMediaInsert.url)}" alt="${escAttr(alt)}">`;
+  const tag=EditorUtils.imgTag({url:pendingMediaInsert.url,alt});
   insertAtCursor(el('htmlArea'),tag);
   closeAltDialog();
   el('mediaModal').classList.remove('show');

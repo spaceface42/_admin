@@ -162,14 +162,25 @@
 
 <!-- DIAGNOSTICS MODAL -->
 <div class="modal-bg" id="diagnosticsModal">
-  <div class="modal" style="width:min(720px,96vw)">
-    <h3>Diagnostics</h3>
-    <p class="mdesc">Current GitCMS runtime state. Useful for checking branch, path, and media configuration.</p>
-    <div class="diag-grid" id="diagnosticsGrid"></div>
-    <div class="diag-note" id="diagnosticsNote"></div>
-    <div class="validation-box" id="validationBox"></div>
-    <div class="modal-err" id="diagnosticsErr"></div>
-    <div class="modal-row">
+  <div class="modal diagnostics-modal">
+    <div class="diag-head">
+      <div>
+        <h3>Diagnostics</h3>
+        <p class="mdesc">Current GitCMS runtime state. Useful for checking branch, path, and media configuration.</p>
+      </div>
+      <button class="icon-btn" id="diagnosticsCloseTop" title="Close diagnostics">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="diag-scroll">
+      <div class="diag-grid" id="diagnosticsGrid"></div>
+      <div class="diag-note" id="diagnosticsNote"></div>
+      <div class="validation-box" id="validationBox"></div>
+      <div class="modal-err" id="diagnosticsErr"></div>
+    </div>
+
+    <div class="modal-row diag-actions">
       <button class="tbtn ghost" id="diagnosticsRefresh">Refresh</button>
       <button class="tbtn ghost" id="diagnosticsCopy">Copy</button>
       <button class="tbtn pub" id="diagnosticsClose">Close</button>
@@ -293,7 +304,7 @@
 <div class="modal-bg" id="pubModal">
   <div class="modal">
     <h3>Publish to main</h3>
-    <p class="mdesc">Sync <b>main</b> → <b>content</b>, then merge <b>content</b> → <b>main</b>. The GitHub Action will deploy <span class="mono">docs/</span> to Pages.</p>
+    <p class="mdesc">Deploy <b>content</b> to <b>main</b>. The GitHub Action will deploy <span class="mono">docs/</span> to Pages.</p>
     <div class="modal-warn" id="pubWarn"></div>
     <div class="publish-summary" id="pubSummary"><div class="publish-empty">Open publish to load changed files.</div></div>
     <div class="modal-err" id="pubErr"></div>

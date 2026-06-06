@@ -3,6 +3,7 @@
 
 el('diagnosticsBtn').onclick=openDiagnostics;
 el('diagnosticsClose').onclick=()=>el('diagnosticsModal').classList.remove('show');
+el('diagnosticsCloseTop').onclick=()=>el('diagnosticsModal').classList.remove('show');
 el('diagnosticsRefresh').onclick=renderDiagnostics;
 el('diagnosticsCopy').onclick=copyDiagnostics;
 
@@ -13,7 +14,7 @@ el('refreshBtn').onclick=()=>loadAll();
 el('sideRefresh').onclick=()=>loadAll();
 
 el('resetDraftBtn').onclick=async()=>{
-  const anyDirty=[...state.frags.values()].some(f=>f.dirty);
+  const anyDirty=Store.dirtyFragments().length>0;
   const warn=anyDirty
     ? 'You have unsaved edits that will be discarded. '
     : '';
@@ -56,7 +57,7 @@ el('altDecorative').addEventListener('change',()=>{
   const checked=el('altDecorative').checked;
   el('altTextInput').disabled=checked;
   if(checked) el('altTextInput').value='';
-  else if(pendingMediaInsert) el('altTextInput').value=altFromFilename(pendingMediaInsert.name);
+  else if(pendingMediaInsert) el('altTextInput').value=MediaUtils.altFromFilename(pendingMediaInsert.name);
 });
 el('altTextInput').addEventListener('keydown',e=>{
   if(e.key==='Enter'){ e.preventDefault(); confirmAltInsert(); }
@@ -74,5 +75,5 @@ document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('mousedown'
 // warn on unload if dirty
 window.addEventListener('beforeunload',e=>{
   if(state.activeId) syncActiveFromTextarea();
-  if([...state.frags.values()].some(f=>f.dirty)){ e.preventDefault(); e.returnValue=''; }
+  if(Store.dirtyFragments().length){ e.preventDefault(); e.returnValue=''; }
 });

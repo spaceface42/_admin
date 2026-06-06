@@ -1,6 +1,6 @@
 /* ---------- diagnostics ---------- */
 function diagnosticsData(){
-  const dirty=[...state.frags.values()].filter(f=>f.dirty);
+  const dirty=Store.dirtyFragments();
   const active=state.activeId ? state.frags.get(state.activeId) : null;
   const repoUrl=state.owner && state.repo ? `https://github.com/${state.owner}/${state.repo}` : '';
   const contentUrl=state.owner && state.repo ? repoUrlForBranch() : '';
@@ -39,14 +39,6 @@ function diagnosticsData(){
   };
 }
 
-function diagnosticsStatusClass(key,value){
-  if(key==="Unsaved fragments" && value!=="0") return "warn";
-  if(key==="Validation warnings" && value!=="0") return "warn";
-  if(key==="Config loaded" && value==="not found") return "warn";
-  if(key==="Manifest loaded" && value==="no") return "warn";
-  if(["Repository","Default branch","Content branch","Media folder","Media URL prefix"].includes(key) && value && !/not|unknown/.test(value)) return "ok";
-  return "";
-}
 
 function renderDiagnostics(){
   const grid=el('diagnosticsGrid');
@@ -55,25 +47,31 @@ function renderDiagnostics(){
   try{
     const data=diagnosticsData();
 
-    for(const [key,value] of Object.entries(data)){
+    for(const row of DiagnosticsUtils.diagnosticsRows(data)){
       const k=document.createElement('div');
       k.className='diag-key';
-      k.textContent=key;
+      k.textContent=row.key;
 
       const v=document.createElement('div');
-      v.className='diag-val '+diagnosticsStatusClass(key,value);
-      v.title=String(value);
-      v.textContent=String(value);
+      v.className='diag-val '+row.statusClass;
+      v.title=row.value;
+      v.textContent=row.value;
 
       grid.appendChild(k);
       grid.appendChild(v);
     }
 
+    const note=DiagnosticsUtils.diagnosticsWorkflowNote({
+      workBranch:state.workBranch,
+      defaultBranch:state.defaultBranch,
+      mediaDir:mediaDir(),
+      mediaPrefix:mediaPrefix()
+    });
     el('diagnosticsNote').innerHTML =
-      `Expected workflow: <span class="mono">${esc(state.workBranch)}</span> is the CMS editing branch, `+
-      `<span class="mono">${esc(state.defaultBranch)}</span> is the live publish branch. `+
-      `Media should usually be saved under <span class="mono">${esc(mediaDir())}</span> and inserted as `+
-      `<span class="mono">${esc(mediaPrefix())}</span>.`;
+      `Expected workflow: <span class="mono">${esc(note.workBranch)}</span> is the CMS editing branch, `+
+      `<span class="mono">${esc(note.defaultBranch)}</span> is the live publish branch. `+
+      `Media should usually be saved under <span class="mono">${esc(note.mediaDir)}</span> and inserted as `+
+      `<span class="mono">${esc(note.mediaPrefix)}</span>.`;
 
     renderValidationBox();
 
@@ -94,11 +92,7 @@ function openDiagnostics(){
 
 function diagnosticsText(){
   try{
-    const data=diagnosticsData();
-    const base=Object.entries(data).map(([k,v])=>`${k}: ${v}`).join('\n');
-    const warnings=allValidationWarnings();
-    if(!warnings.length) return base;
-    return base+'\n\nValidation warnings:\n'+warnings.map(w=>`- ${w.kind}: ${w.msg}`).join('\n');
+    return DiagnosticsUtils.diagnosticsText(diagnosticsData(),allValidationWarnings());
   }catch(e){
     return 'Diagnostics failed: '+(e.message||e);
   }

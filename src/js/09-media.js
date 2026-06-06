@@ -1,5 +1,4 @@
 /* ---------- media library ---------- */
-const IMAGE_RE=/\.(png|jpe?g|gif|webp|svg|avif)$/i;
 let gitcmsConfig=null;
 let gitcmsConfigLoaded=false;
 const pendingMediaPreviews=new Map(); // path -> {url,name,path,size,type,sha,expiresAt}
@@ -66,7 +65,7 @@ async function saveConfig(){
   const newManifestPath=normalizeRepoPath(el('cfgManifestPath').value)||DEFAULT_MANIFEST_PATH;
   const newMediaDir=normalizeRepoPath(el('cfgMediaDir').value)||DEFAULT_MEDIA_DIR;
   const newMediaPrefix=normalizePublicPrefix(el('cfgMediaPrefix').value,newMediaDir);
-  const newPreviewCss=el('cfgPreviewCss').value.split(',').map(x=>x.trim()).filter(Boolean);
+  const newPreviewCss=ConfigUtils.parsePreviewCssInput(el('cfgPreviewCss').value);
   el('settingsErr').classList.remove('show');
 
   const btn=el('settingsSave');
@@ -74,24 +73,14 @@ async function saveConfig(){
 
   try{
     const existing=(await loadGitCMSConfig(true,[state.workBranch,state.defaultBranch]))||{};
-    const next={
-      ...existing,
-      // workBranch is preserved as-is from existing config (not editable in UI)
+    const next=ConfigUtils.buildNextGitCMSConfig(existing,{
       manifestPath:newManifestPath,
-      media:{
-        ...(existing.media && typeof existing.media==='object' ? existing.media : {}),
-        dir:newMediaDir,
-        publicPrefix:newMediaPrefix
-      },
-      preview:{
-        ...(existing.preview && typeof existing.preview==='object' ? existing.preview : {}),
-        css:newPreviewCss
-      }
-    };
-    // Only include workBranch if it was already in config; don't inject a default.
-    if(!('workBranch' in next) && state.workBranch!==DEFAULT_WORK_BRANCH){
-      next.workBranch=state.workBranch;
-    }
+      mediaDir:newMediaDir,
+      mediaPrefix:newMediaPrefix,
+      previewCss:newPreviewCss,
+      workBranch:state.workBranch,
+      defaultWorkBranch:DEFAULT_WORK_BRANCH
+    });
 
     let sha=null;
     try{
@@ -120,7 +109,7 @@ async function saveConfig(){
     // Reload if manifest path changed — fragments source has moved.
     if(manifestChanged) await loadAll();
   }catch(e){
-    el('settingsErr').textContent='Save failed: '+e.message;
+    el('settingsErr').textContent=GitHubErrors.githubErrorMessage(e,{action:'Save config'});
     el('settingsErr').classList.add('show');
     toast('Config save failed','err');
   }finally{
@@ -173,7 +162,7 @@ async function loadMedia(silent=false){
 
   try{
     const items=await GitHubApi.listContent(dir,state.workBranch);
-    const images=(Array.isArray(items)?items:[]).filter(i=>i.type==='file'&&IMAGE_RE.test(i.name));
+    const images=(Array.isArray(items)?items:[]).filter(i=>i.type==='file'&&MediaUtils.isImageFilename(i.name));
     const now=Date.now();
     const seen=new Set(images.map(i=>i.path));
 
@@ -213,7 +202,7 @@ async function loadMedia(silent=false){
       }
     }else{
       setMediaGridEmpty('Could not load media.');
-      showMediaErr('Media load failed: '+e.message);
+      showMediaErr(GitHubErrors.githubErrorMessage(e,{action:'Load media'}));
     }
   }
 }
@@ -326,18 +315,13 @@ function insertMediaImage(path){
 let pendingDeleteMedia=null;
 
 function mediaUsageList(path){
-  const url=mediaPublicUrl(path);
-  const name=path.split('/').pop();
-  const needles=[url,name].filter(Boolean);
-  const hits=[];
-  for(const f of state.frags.values()){
-    const html=f.innerHTML||'';
-    if(needles.some(n=>n && html.includes(n))){
-      hits.push(`${f.label || f.id} (${f.path})`);
-    }
-  }
-  return hits;
+  return MediaUtils.mediaUsageList({
+    fragments:[...state.frags.values()],
+    mediaUrl:mediaPublicUrl(path),
+    filename:path.split('/').pop()
+  });
 }
+
 
 function openDeleteMediaDialog(item,card=null){
   pendingDeleteMedia={item,card};
@@ -409,7 +393,7 @@ async function confirmDeleteMedia(){
   }catch(e){
     if(card) card.classList.remove('deleting');
     const err=el('deleteMediaErr');
-    err.textContent='Delete failed: '+e.message;
+    err.textContent=GitHubErrors.githubErrorMessage(e,{action:'Delete media'});
     err.classList.add('show');
     toast('Delete failed','err');
   }finally{
@@ -420,27 +404,18 @@ async function confirmDeleteMedia(){
 
 function insertAtCursor(textarea,text){
   textarea.focus();
-  const start=textarea.selectionStart ?? textarea.value.length;
-  const end=textarea.selectionEnd ?? textarea.value.length;
-  const before=textarea.value.slice(0,start);
-  const after=textarea.value.slice(end);
-  const spacerBefore=before && !before.endsWith('\n') ? '\n' : '';
-  const spacerAfter=after && !after.startsWith('\n') ? '\n' : '';
-  const insert=spacerBefore + text + spacerAfter;
-  textarea.value=before + insert + after;
-  const pos=start + insert.length;
-  textarea.setSelectionRange(pos,pos);
+  const result=EditorUtils.computeCursorInsertion(
+    textarea.value,
+    textarea.selectionStart ?? textarea.value.length,
+    textarea.selectionEnd ?? textarea.value.length,
+    text
+  );
+  textarea.value=result.value;
+  textarea.setSelectionRange(result.cursor,result.cursor);
   textarea.dispatchEvent(new Event('input',{bubbles:true}));
 }
 
-function sanitizeFilename(name){
-  const parts=name.split('.');
-  const ext=parts.length>1 ? '.'+parts.pop().toLowerCase().replace(/[^a-z0-9]/g,'') : '';
-  const base=parts.join('.').toLowerCase()
-    .normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
-    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'image';
-  return base + ext;
-}
+
 function readFileBase64(file){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
@@ -465,12 +440,8 @@ async function uniqueMediaPath(dir,name){
   let candidate=`${dir}/${name}`;
   if(!(await mediaPathExists(candidate))) return {path:candidate,name,changed:false};
 
-  const dot=name.lastIndexOf('.');
-  const base=dot>0 ? name.slice(0,dot) : name;
-  const ext=dot>0 ? name.slice(dot) : '';
-
   for(let i=2;i<=99;i++){
-    const nextName=`${base}-${i}${ext}`;
+    const nextName=MediaUtils.uniqueNameCandidate(name,i);
     const nextPath=`${dir}/${nextName}`;
     if(!(await mediaPathExists(nextPath))){
       return {path:nextPath,name:nextName,changed:true,original:name};
@@ -497,7 +468,7 @@ async function uploadMediaFiles(){
       const file=files[i];
       if(!file.type.startsWith('image/')) throw new Error(file.name+' is not an image.');
 
-      const desiredName=(files.length>1 ? `${stamp}-${i+1}-` : `${stamp}-`) + sanitizeFilename(file.name);
+      const desiredName=MediaUtils.stampedUploadName({stamp,index:i,total:files.length,originalName:file.name});
       const unique=await uniqueMediaPath(dir,desiredName);
       const name=unique.name;
       const path=unique.path;
@@ -537,7 +508,7 @@ async function uploadMediaFiles(){
     // edge caches catch up while the local preview remains visible.
     [1500,4000,9000,20000].forEach(ms=>sleep(ms).then(()=>loadMedia(true)));
   }catch(e){
-    showMediaErr('Upload failed: '+e.message);
+    showMediaErr(GitHubErrors.githubErrorMessage(e,{action:'Upload media'}));
     toast('Upload failed','err');
   }
 }

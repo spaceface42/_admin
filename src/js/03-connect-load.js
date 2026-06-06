@@ -3,8 +3,8 @@ async function connect(){
   const url=el('repoUrl').value, tok=el('token').value.trim();
   const parsed=parseRepoUrl(url);
   el('loginErr').style.display='none';
-  if(!parsed){ showLoginErr('Could not parse a github.com owner/repo from that URL.'); return; }
-  if(!tok){ showLoginErr('A token is required.'); return; }
+  const validationMsg=ConnectUtils.connectValidation({repoUrl:url,token:tok});
+  if(validationMsg){ showLoginErr(validationMsg); return; }
 
   Store.setRepo(parsed.owner,parsed.repo,tok);
   const btn=el('connectBtn'); btn.disabled=true; btn.textContent='Connecting…';
@@ -48,16 +48,14 @@ async function connect(){
 
 /* Apply workBranch and manifestPath from loaded config into state. */
 function applyConfig(cfg){
-  if(!cfg) return;
-  if(typeof cfg.workBranch==='string' && cfg.workBranch.trim())
-    Store.setWorkBranch(cfg.workBranch.trim());
-  if(typeof cfg.manifestPath==='string' && cfg.manifestPath.trim())
-    Store.setManifestPath(cfg.manifestPath);
+  const patch=ConnectUtils.configStatePatch(cfg);
+  if(patch.workBranch) Store.setWorkBranch(patch.workBranch);
+  if(patch.manifestPath) Store.setManifestPath(patch.manifestPath);
 }
 
 /* Update all branch-name labels in the UI after connect or config save. */
 function branchLabel(name){
-  return String(name||'').replace(/[-_]+/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  return ConnectUtils.branchLabel(name);
 }
 function updateBranchLabels(){
   el('workBranchBadge').textContent=state.workBranch;
@@ -204,7 +202,7 @@ async function loadAll(){
     showEmpty();
   }catch(e){
     setStatus('Load failed',false);
-    toast('Load failed: '+e.message,'err');
+    toast(GitHubErrors.githubErrorMessage(e,{action:'Load'}),'err');
     console.error(e);
   }
 }

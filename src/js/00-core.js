@@ -23,7 +23,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.7-preview-blob';
+const GITCMS_VERSION='1.1.28-release-hardening';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -70,33 +70,37 @@ const LastWriteCommitCache = Object.freeze({
     try{localStorage.setItem(LS_LAST_WRITE,JSON.stringify(data));}catch(e){}
   },
   key(branch){
-    return `${state.owner}/${state.repo}:${branch}`;
+    return ContentSourceUtils.cacheKey({owner:state.owner,repo:state.repo,branch});
   },
   set(branch,sha){
-    if(!branch || !sha) return;
-    const data=this.readAll();
-    data[this.key(branch)]={sha,t:Date.now()};
+    const data=ContentSourceUtils.writeCachedCommit(this.readAll(),{
+      owner:state.owner,
+      repo:state.repo,
+      branch,
+      sha,
+      now:Date.now()
+    });
     this.writeAll(data);
   },
   get(branch){
     if(!branch) return '';
-    const item=this.readAll()[this.key(branch)];
-    if(!item || !item.sha) return '';
-    if(Date.now()-(item.t||0)>this.ttlMs) return '';
-    return item.sha;
+    return ContentSourceUtils.cachedCommitIfFresh(this.readAll()[this.key(branch)],{
+      now:Date.now(),
+      ttlMs:this.ttlMs
+    });
   },
   clear(branch){
-    const data=this.readAll();
-    delete data[this.key(branch)];
-    this.writeAll(data);
+    this.writeAll(ContentSourceUtils.clearCachedBranch(this.readAll(),{
+      owner:state.owner,
+      repo:state.repo,
+      branch
+    }));
   },
   clearRepo(){
-    const data=this.readAll();
-    const prefix=`${state.owner}/${state.repo}:`;
-    for(const key of Object.keys(data)){
-      if(key.startsWith(prefix)) delete data[key];
-    }
-    this.writeAll(data);
+    this.writeAll(ContentSourceUtils.clearCachedRepo(this.readAll(),{
+      owner:state.owner,
+      repo:state.repo
+    }));
   }
 });
 
@@ -140,6 +144,38 @@ const Store = Object.freeze({
   },
   addFragment(fragment){
     state.frags.set(fragment.id,fragment);
+  },
+  manifestLabelForFragment(fragment){
+    if(!fragment) return '';
+    const entry=state.manifest&&state.manifest.find(e=>e.id===fragment.id);
+    return entry&&entry.label ? entry.label : fragment.id;
+  },
+  isFragmentDirty(fragment){
+    if(!fragment) return false;
+    return String(fragment.innerHTML||'')!==String(fragment.origHTML||'') ||
+      String(fragment.label||fragment.id)!==String(this.manifestLabelForFragment(fragment));
+  },
+  applyEditorValues(id,{html,label}={}){
+    const fragment=state.frags.get(id);
+    if(!fragment) return null;
+    if(html!==undefined) fragment.innerHTML=html;
+    if(label!==undefined) fragment.label=(String(label).trim()||fragment.id);
+    fragment.dirty=this.isFragmentDirty(fragment);
+    return fragment;
+  },
+  markFragmentClean(id){
+    const fragment=state.frags.get(id);
+    if(!fragment) return null;
+    fragment.origHTML=fragment.innerHTML;
+    fragment.dirty=false;
+    return fragment;
+  },
+  dirtyFragments(){
+    return [...state.frags.values()].filter(f=>f.dirty);
+  },
+  dirtyFragmentIdsForFile(fileRec){
+    if(!fileRec || !Array.isArray(fileRec.fragments)) return [];
+    return fileRec.fragments.filter(id=>state.frags.get(id)?.dirty);
   },
   clearValidationBucket(kind){
     if(state.validation && state.validation[kind]) state.validation[kind]=[];
@@ -279,17 +315,18 @@ const GitHubApi = Object.freeze({
       return state.contentTree;
     }
 
-    let commitSha='';
-    let source='branch ref';
-
     // Critical freshness fix:
     // If this browser just saved to the content branch, GitHub returned the
     // exact new commit SHA. Use that SHA for subsequent refresh/login reads
     // instead of asking GitHub's branch/ref endpoints, which can briefly lag.
-    if(preferLastWrite && branch===state.workBranch){
-      commitSha=LastWriteCommitCache.get(branch);
-      if(commitSha) source='last successful write';
-    }
+    const chosen=ContentSourceUtils.choosePinnedCommit({
+      branch,
+      workBranch:state.workBranch,
+      preferLastWrite,
+      cachedSha:LastWriteCommitCache.get(branch)
+    });
+    let commitSha=chosen.commitSha;
+    let source=chosen.source;
 
     if(!commitSha){
       const ref=await this.getRef(branch);
@@ -300,13 +337,19 @@ const GitHubApi = Object.freeze({
     const commit=await this.getGitCommit(commitSha);
     const treeSha=commit.tree.sha;
     const tree=await this.getTreeBySha(treeSha,{recursive:true});
-    const snapshot={branch,commitSha,treeSha,source,tree:tree.tree||[]};
+    const snapshot=ContentSourceUtils.buildContentTreeSnapshot({
+      branch,
+      commitSha,
+      treeSha,
+      source,
+      treeResponse:tree
+    });
     Store.setContentTree(snapshot);
     return snapshot;
   },
   async getBlobFileFromSnapshot(path,snapshot){
     const cleanPath=Paths.normalizeRepoPath(path);
-    const item=(snapshot.tree||[]).find(n=>n.path===cleanPath && n.type==='blob');
+    const item=ContentSourceUtils.findBlobInTree(snapshot.tree,cleanPath);
     if(!item){
       const err=new Error('File not found');
       err.status=404;
@@ -318,7 +361,7 @@ const GitHubApi = Object.freeze({
       sha:item.sha,
       type:'file',
       encoding:blob.encoding || 'base64',
-      content:String(blob.content||'').replace(/\s+/g,'')
+      content:ContentSourceUtils.normalizeBlobContent(blob.content)
     };
   },
   async getFileViaGitData(path,ref){
@@ -333,7 +376,13 @@ const GitHubApi = Object.freeze({
     const readRef=await this.contentReadRef(ref);
     const commit=await this.getGitCommit(readRef);
     const tree=await this.getTreeBySha(commit.tree.sha,{recursive:true});
-    return this.getBlobFileFromSnapshot(path,{branch:ref,commitSha:readRef,treeSha:commit.tree.sha,tree:tree.tree||[]});
+    return this.getBlobFileFromSnapshot(path,ContentSourceUtils.buildContentTreeSnapshot({
+      branch:ref,
+      commitSha:readRef,
+      treeSha:commit.tree.sha,
+      source:'branch ref',
+      treeResponse:tree
+    }));
   },
   getFile(path,ref){
     return this.getFileViaGitData(path,ref);
@@ -387,9 +436,7 @@ async function gh(path,opts={}){
 
 
 function parseRepoUrl(url){
-  const m=url.trim().replace(/\.git$/,'').match(/github\.com[/:]([^/]+)\/([^/]+)/);
-  if(!m) return null;
-  return {owner:m[1],repo:m[2]};
+  return ConnectUtils.parseRepoUrl(url);
 }
 
 
