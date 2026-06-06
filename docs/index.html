@@ -265,15 +265,15 @@
   .media-upload{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
   .media-upload input[type="file"]{flex:1;min-width:220px;margin-bottom:0;padding:8px 10px}
   .media-note{font-size:11.5px;color:var(--txt3);font-family:var(--mono);margin-bottom:12px}
-  .media-grid{min-height:220px;max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px;
-    background:var(--bg);padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));gap:10px;margin-bottom:16px}
+  .media-grid{min-height:260px;max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:8px;
+    background:var(--bg);padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px;margin-bottom:16px}
   .media-empty{grid-column:1/-1;display:flex;align-items:center;justify-content:center;color:var(--txt3);font-size:13px;min-height:180px;text-align:center;padding:20px}
   .media-card{border:1px solid var(--line2);border-radius:8px;background:var(--bg2);overflow:hidden;text-align:left;transition:.13s}
   .media-card:hover{border-color:var(--accent2);transform:translateY(-1px)}
-  .media-thumb{width:100%;height:96px;display:block;object-fit:cover;background:#fff}
+  .media-thumb{width:100%;height:142px;display:block;object-fit:cover;background:#fff}
   .media-thumb.placeholder{display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--txt3);font-family:var(--mono);font-size:11px}
-  .media-name{font-family:var(--mono);font-size:11px;color:var(--txt2);padding:7px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid var(--line)}
-  .media-path{font-family:var(--mono);font-size:10px;color:var(--txt3);padding:0 8px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .media-name{font-family:var(--mono);font-size:11.5px;color:var(--txt2);padding:8px 9px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid var(--line)}
+  .media-path{font-family:var(--mono);font-size:10.5px;color:var(--txt3);padding:0 9px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 
   .media-card.deleting{opacity:.55;pointer-events:none;filter:grayscale(.25)}
@@ -286,15 +286,17 @@
     border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:14px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  .media-actions{display:flex;gap:6px;padding:0 8px 8px}
-  .media-action{flex:1;border:1px solid var(--line2);background:var(--bg3);color:var(--txt2);
-    border-radius:5px;padding:5px 6px;font-size:10.5px;font-weight:700;transition:.13s}
+  .media-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:0 9px 10px}
+  .media-action{border:1px solid var(--line2);background:var(--bg3);color:var(--txt2);
+    border-radius:5px;padding:6px 5px;font-size:10.5px;font-weight:700;transition:.13s;white-space:nowrap;text-align:center}
   .media-action:hover{border-color:var(--accent2);color:var(--txt)}
   .media-action.delete:hover{border-color:var(--red);color:var(--red);background:var(--red-bg)}
+  .media-action.copy:hover{border-color:var(--blue);color:var(--blue);background:#0f1f2e}
+
 
   .media-grid::-webkit-scrollbar{width:9px;height:9px}
   .media-grid::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px}
-  @media (max-width:760px){.media-controls{grid-template-columns:1fr}.media-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}}
+  @media (max-width:760px){.media-controls{grid-template-columns:1fr}.media-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.media-thumb{height:120px}.media-actions{grid-template-columns:1fr}.media-action{padding:7px 6px}}
 
   /* toast */
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
@@ -2179,12 +2181,14 @@ function renderMediaCard(item,{localUrl=null}={}){
     </button>
     <div class="media-actions">
       <button class="media-action insert" type="button">Insert</button>
+      <button class="media-action copy" type="button" title="Copy public media URL">Copy</button>
       <button class="media-action delete" type="button">Delete</button>
     </div>`;
   el('mediaGrid').appendChild(card);
 
   card.querySelector('.media-insert').onclick=()=>insertMediaImage(item.path);
   card.querySelector('.media-action.insert').onclick=()=>insertMediaImage(item.path);
+  card.querySelector('.media-action.copy').onclick=()=>copyMediaUrl(item.path);
   card.querySelector('.media-action.delete').onclick=()=>openDeleteMediaDialog(item,card);
 
   const slot=card.querySelector('.media-thumb');
@@ -2221,6 +2225,40 @@ async function loadMediaThumb(item,slot,attempt=0){
     }else{
       slot.textContent='no preview';
     }
+  }
+}
+
+
+async function copyTextToClipboard(text){
+  try{
+    await navigator.clipboard.writeText(text);
+    return true;
+  }catch(e){
+    const ta=document.createElement('textarea');
+    ta.value=text;
+    ta.style.position='fixed';
+    ta.style.left='-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try{
+      document.execCommand('copy');
+      return true;
+    }catch(err){
+      return false;
+    }finally{
+      ta.remove();
+    }
+  }
+}
+
+async function copyMediaUrl(path){
+  const url=mediaPublicUrl(path);
+  const ok=await copyTextToClipboard(url);
+  if(ok) toast('Copied media URL','ok');
+  else {
+    showMediaErr('Copy failed. URL: '+url);
+    toast('Copy failed','err');
   }
 }
 
