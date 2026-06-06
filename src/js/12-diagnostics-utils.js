@@ -21,12 +21,27 @@ const DiagnosticsUtils = (() => {
     return '';
   }
 
-  function diagnosticsRows(data) {
-    return Object.entries(data || {}).map(([key, value]) => ({
+
+  function diagnosticsBadgeText(statusClass) {
+    if (statusClass === 'ok') return 'OK';
+    if (statusClass === 'warn') return 'CHECK';
+    return '';
+  }
+
+  function diagnosticsRowMeta(key, value) {
+    const stringValue = String(value);
+    const statusClass = diagnosticsStatusClass(key, stringValue);
+    return {
       key,
-      value: String(value),
-      statusClass: diagnosticsStatusClass(key, String(value))
-    }));
+      value: stringValue,
+      statusClass,
+      badge: diagnosticsBadgeText(statusClass),
+      isSha: /\bSHA\b/i.test(key) && /^[a-f0-9]{40}$/i.test(stringValue)
+    };
+  }
+
+  function diagnosticsRows(data) {
+    return Object.entries(data || {}).map(([key, value]) => diagnosticsRowMeta(key, value));
   }
 
   function diagnosticsText(data, warnings = []) {
@@ -74,6 +89,8 @@ const DiagnosticsUtils = (() => {
 
   return Object.freeze({
     diagnosticsStatusClass,
+    diagnosticsBadgeText,
+    diagnosticsRowMeta,
     diagnosticsRows,
     diagnosticsText,
     diagnosticsTextSections,

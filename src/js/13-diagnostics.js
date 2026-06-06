@@ -140,6 +140,34 @@ function appendDiagnosticsSection(grid,title){
   grid.appendChild(heading);
 }
 
+function diagnosticsCompareUrl(){
+  if(!state.owner || !state.repo) return '';
+  return `https://github.com/${encodeURIComponent(state.owner)}/${encodeURIComponent(state.repo)}/compare/${encodeURIComponent(state.defaultBranch)}...${encodeURIComponent(state.workBranch)}`;
+}
+
+function diagnosticsRefUrl(branch){
+  if(!state.owner || !state.repo || !branch) return '';
+  return `https://github.com/${encodeURIComponent(state.owner)}/${encodeURIComponent(state.repo)}/tree/${encodeURIComponent(branch)}`;
+}
+
+function diagnosticsLinksHtml(){
+  const links=[
+    {label:'Open content branch',url:diagnosticsRefUrl(state.workBranch)},
+    {label:'Open main branch',url:diagnosticsRefUrl(state.defaultBranch)},
+    {label:'Open compare main…content',url:diagnosticsCompareUrl()}
+  ].filter(x=>x.url);
+
+  return links.map(link=>
+    `<a class="diag-link" href="${escAttr(link.url)}" target="_blank" rel="noopener">${esc(link.label)} ↗</a>`
+  ).join('');
+}
+
+async function copyDiagnosticValue(value,label='value'){
+  const ok=await copyTextToClipboard(value);
+  if(ok) toast(`${label} copied`,'ok');
+  else toast('Copy failed','err');
+}
+
 function appendDiagnosticsRows(grid,data){
   for(const row of DiagnosticsUtils.diagnosticsRows(data)){
     const k=document.createElement('div');
@@ -149,7 +177,33 @@ function appendDiagnosticsRows(grid,data){
     const v=document.createElement('div');
     v.className='diag-val '+row.statusClass;
     v.title=row.value;
-    v.textContent=row.value;
+
+    const rowWrap=document.createElement('div');
+    rowWrap.className='diag-row';
+
+    const valueText=document.createElement('span');
+    valueText.className='diag-value-text';
+    valueText.textContent=row.value;
+    rowWrap.appendChild(valueText);
+
+    if(row.badge){
+      const badge=document.createElement('span');
+      badge.className='diag-badge '+row.statusClass;
+      badge.textContent=row.badge;
+      rowWrap.appendChild(badge);
+    }
+
+    if(row.isSha){
+      const copyBtn=document.createElement('button');
+      copyBtn.type='button';
+      copyBtn.className='diag-copy';
+      copyBtn.textContent='copy';
+      copyBtn.title='Copy full SHA';
+      copyBtn.onclick=()=>copyDiagnosticValue(row.value,row.key);
+      rowWrap.appendChild(copyBtn);
+    }
+
+    v.appendChild(rowWrap);
 
     grid.appendChild(k);
     grid.appendChild(v);
@@ -182,6 +236,7 @@ async function renderDiagnostics(){
       mediaPrefix:mediaPrefix()
     });
     el('diagnosticsNote').innerHTML =
+      `<div class="diag-links">${diagnosticsLinksHtml()}</div>`+
       `Expected workflow: <span class="mono">${esc(note.workBranch)}</span> is the CMS editing branch, `+
       `<span class="mono">${esc(note.defaultBranch)}</span> is the live publish branch. `+
       `Media should usually be saved under <span class="mono">${esc(note.mediaDir)}</span> and inserted as `+

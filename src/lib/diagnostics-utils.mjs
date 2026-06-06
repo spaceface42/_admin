@@ -20,11 +20,7 @@ export function diagnosticsStatusClass(key, value) {
 }
 
 export function diagnosticsRows(data) {
-  return Object.entries(data || {}).map(([key, value]) => ({
-    key,
-    value: String(value),
-    statusClass: diagnosticsStatusClass(key, String(value))
-  }));
+  return Object.entries(data || {}).map(([key, value]) => diagnosticsRowMeta(key, value));
 }
 
 export function diagnosticsText(data, warnings = []) {
@@ -67,4 +63,22 @@ export function diagnosticsTextSections(sections = [], warnings = []) {
     '\n\nValidation warnings:\n' +
     warnings.map(warning => `- ${warning.kind}: ${warning.msg}`).join('\n')
   );
+}
+
+export function diagnosticsBadgeText(statusClass) {
+  if (statusClass === 'ok') return 'OK';
+  if (statusClass === 'warn') return 'CHECK';
+  return '';
+}
+
+export function diagnosticsRowMeta(key, value) {
+  const stringValue = String(value);
+  const statusClass = diagnosticsStatusClass(key, stringValue);
+  return {
+    key,
+    value: stringValue,
+    statusClass,
+    badge: diagnosticsBadgeText(statusClass),
+    isSha: /\bSHA\b/i.test(key) && /^[a-f0-9]{40}$/i.test(stringValue)
+  };
 }

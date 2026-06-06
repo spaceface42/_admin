@@ -20,8 +20,8 @@ test('diagnosticsStatusClass marks valid key connection fields as ok', () => {
 
 test('diagnosticsRows converts data to display rows', () => {
   assert.deepEqual(diagnosticsRows({ Repository: 'a/b', 'Unsaved fragments': '1' }), [
-    { key: 'Repository', value: 'a/b', statusClass: 'ok' },
-    { key: 'Unsaved fragments', value: '1', statusClass: 'warn' }
+    { key: 'Repository', value: 'a/b', statusClass: 'ok', badge: 'OK', isSha: false },
+    { key: 'Unsaved fragments', value: '1', statusClass: 'warn', badge: 'CHECK', isSha: false }
   ]);
 });
 
