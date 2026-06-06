@@ -300,7 +300,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.40-diagnostics-ui-polish';
+const GITCMS_VERSION='1.1.43-simple-diagnostics';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -1468,6 +1468,7 @@ async function connect(){
     el('login').style.display='none';
     el('app').style.display='flex';
     el('repoBadgeTxt').textContent=`${state.owner}/${state.repo}`;
+    el('repoBadge').title='Content/site repository: '+`${state.owner}/${state.repo}`;
     updateBranchLabels();
 
     await loadAll();
@@ -3350,6 +3351,26 @@ const DiagnosticsUtils = (() => {
     };
   }
 
+
+  function inferGitHubPagesAdminRepo({ hostname = '', pathname = '' } = {}) {
+    const host = String(hostname || '').toLowerCase();
+    if (!host.endsWith('.github.io')) return '';
+
+    const owner = host.replace(/\.github\.io$/, '');
+    const firstSegment = String(pathname || '')
+      .split('/')
+      .filter(Boolean)[0];
+
+    if (!owner || !firstSegment) return '';
+
+    return `https://github.com/${owner}/${firstSegment}`;
+  }
+
+  function adminVersionStatus({ currentVersion, expectedVersion }) {
+    if (!expectedVersion || currentVersion === expectedVersion) return 'ok';
+    return 'version differs';
+  }
+
   return Object.freeze({
     diagnosticsStatusClass,
     diagnosticsBadgeText,
@@ -3357,7 +3378,9 @@ const DiagnosticsUtils = (() => {
     diagnosticsRows,
     diagnosticsText,
     diagnosticsTextSections,
-    diagnosticsWorkflowNote
+    diagnosticsWorkflowNote,
+    inferGitHubPagesAdminRepo,
+    adminVersionStatus
   });
 })();
 
@@ -3513,6 +3536,28 @@ async function doPublish(){
 /* ---------- diagnostics ---------- */
 let lastDiagnosticsCacheData=null;
 
+function diagnosticsAdminData(){
+  const expectedVersion=GITCMS_VERSION;
+  const adminSourceRepo=DiagnosticsUtils.inferGitHubPagesAdminRepo({
+    hostname:location.hostname,
+    pathname:location.pathname
+  });
+
+  return {
+    "Current admin version": GITCMS_VERSION,
+    "Expected stable version": expectedVersion,
+    "Version status": DiagnosticsUtils.adminVersionStatus({
+      currentVersion:GITCMS_VERSION,
+      expectedVersion
+    }),
+    "Admin hosted URL": location.href,
+    "Admin origin": location.origin === "null" ? "local file" : location.origin,
+    "Admin path": location.pathname || "/",
+    "Admin source repo": adminSourceRepo || "not inferred",
+    "Content/site repo": state.owner && state.repo ? `https://github.com/${state.owner}/${state.repo}` : "not connected"
+  };
+}
+
 function diagnosticsData(){
   const dirty=Store.dirtyFragments();
   const active=state.activeId ? state.frags.get(state.activeId) : null;
@@ -3522,7 +3567,7 @@ function diagnosticsData(){
 
   return {
     "GitCMS version": GITCMS_VERSION,
-    "Repository": state.owner && state.repo ? `${state.owner}/${state.repo}` : "not connected",
+    "Content repository": state.owner && state.repo ? `${state.owner}/${state.repo}` : "not connected",
     "Default branch": state.defaultBranch || "unknown",
     "Content branch": state.workBranch || "unknown",
     "CMS source branch": state.workBranch || "unknown",
@@ -3546,7 +3591,7 @@ function diagnosticsData(){
     "Unsaved fragments": String(dirty.length),
     "Active fragment": active ? `#${active.id} — ${active.label}` : "none",
     "Active file": active ? active.path : "none",
-    "Repository URL": repoUrl || "not connected",
+    "Content repository URL": repoUrl || "not connected",
     "Content branch URL": contentUrl || "not connected",
     "Live site URL": pagesFallback || "not connected",
     "Admin origin": location.origin === "null" ? "local file" : location.origin
@@ -3722,24 +3767,71 @@ function appendDiagnosticsRows(grid,data){
   }
 }
 
+function diagnosticsSummaryData(runtime,cache,admin){
+  return {
+    "Admin version": admin["Current admin version"],
+    "Admin source repo": admin["Admin source repo"],
+    "Content repo": admin["Content/site repo"],
+    "Content branch": runtime["Content branch"],
+    "Main branch": runtime["Default branch"],
+    "Cache status": cache["Cache status"],
+    "Loaded content source": cache["Loaded content source"],
+    "Unsaved fragments": runtime["Unsaved fragments"],
+    "Validation warnings": runtime["Validation warnings"]
+  };
+}
+
+function appendDiagnosticsAdvanced(grid,sections){
+  const details=document.createElement('details');
+  details.className='diag-advanced';
+
+  const summary=document.createElement('summary');
+  summary.textContent='Advanced diagnostics';
+  details.appendChild(summary);
+
+  const inner=document.createElement('div');
+  inner.className='diag-grid diag-grid-nested';
+
+  for(const section of sections){
+    appendDiagnosticsSection(inner,section.title);
+    appendDiagnosticsRows(inner,section.data);
+  }
+
+  details.appendChild(inner);
+  grid.appendChild(details);
+}
+
 async function renderDiagnostics(){
   const grid=el('diagnosticsGrid');
   grid.innerHTML='';
 
   try{
-    appendDiagnosticsSection(grid,'Runtime');
-    appendDiagnosticsRows(grid,diagnosticsData());
+    const admin=diagnosticsAdminData();
+    const runtime=diagnosticsData();
 
-    appendDiagnosticsSection(grid,'Cache / content source');
-    appendDiagnosticsRows(grid,{"Cache status":"loading…"});
+    appendDiagnosticsSection(grid,'Summary');
+    appendDiagnosticsRows(grid,{
+      "Admin version": admin["Current admin version"],
+      "Content repo": admin["Content/site repo"],
+      "Content branch": runtime["Content branch"],
+      "Main branch": runtime["Default branch"],
+      "Cache status": "loading…",
+      "Unsaved fragments": runtime["Unsaved fragments"],
+      "Validation warnings": runtime["Validation warnings"]
+    });
+
     const cache=await diagnosticsCacheData();
     lastDiagnosticsCacheData=cache;
 
     grid.innerHTML='';
-    appendDiagnosticsSection(grid,'Runtime');
-    appendDiagnosticsRows(grid,diagnosticsData());
-    appendDiagnosticsSection(grid,'Cache / content source');
-    appendDiagnosticsRows(grid,cache);
+    appendDiagnosticsSection(grid,'Summary');
+    appendDiagnosticsRows(grid,diagnosticsSummaryData(runtime,cache,admin));
+
+    appendDiagnosticsAdvanced(grid,[
+      {title:'Admin / version',data:admin},
+      {title:'Runtime',data:runtime},
+      {title:'Cache / content source',data:cache}
+    ]);
 
     const note=DiagnosticsUtils.diagnosticsWorkflowNote({
       workBranch:state.workBranch,
@@ -3806,11 +3898,13 @@ function openDiagnostics(){
 }
 
 async function diagnosticsText(){
+  // Copy remains full-detail even though the visible UI is simple by default.
   try{
     const runtime=diagnosticsData();
     const cache=await diagnosticsCacheData();
     lastDiagnosticsCacheData=cache;
     return DiagnosticsUtils.diagnosticsTextSections([
+      {title:'Admin / version',data:diagnosticsAdminData()},
       {title:'Runtime',data:runtime},
       {title:'Cache / content source',data:cache}
     ],allValidationWarnings());

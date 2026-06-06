@@ -36,6 +36,7 @@ async function connect(){
     el('login').style.display='none';
     el('app').style.display='flex';
     el('repoBadgeTxt').textContent=`${state.owner}/${state.repo}`;
+    el('repoBadge').title='Content/site repository: '+`${state.owner}/${state.repo}`;
     updateBranchLabels();
 
     await loadAll();

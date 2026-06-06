@@ -87,6 +87,26 @@ const DiagnosticsUtils = (() => {
     };
   }
 
+
+  function inferGitHubPagesAdminRepo({ hostname = '', pathname = '' } = {}) {
+    const host = String(hostname || '').toLowerCase();
+    if (!host.endsWith('.github.io')) return '';
+
+    const owner = host.replace(/\.github\.io$/, '');
+    const firstSegment = String(pathname || '')
+      .split('/')
+      .filter(Boolean)[0];
+
+    if (!owner || !firstSegment) return '';
+
+    return `https://github.com/${owner}/${firstSegment}`;
+  }
+
+  function adminVersionStatus({ currentVersion, expectedVersion }) {
+    if (!expectedVersion || currentVersion === expectedVersion) return 'ok';
+    return 'version differs';
+  }
+
   return Object.freeze({
     diagnosticsStatusClass,
     diagnosticsBadgeText,
@@ -94,6 +114,8 @@ const DiagnosticsUtils = (() => {
     diagnosticsRows,
     diagnosticsText,
     diagnosticsTextSections,
-    diagnosticsWorkflowNote
+    diagnosticsWorkflowNote,
+    inferGitHubPagesAdminRepo,
+    adminVersionStatus
   });
 })();

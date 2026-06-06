@@ -20,16 +20,17 @@
       </svg>
       <h1>GitCMS</h1>
     </div>
-    <p class="sub">Zero-backend CMS. Edits HTML fragments directly via the GitHub API.</p>
+    <p class="sub">Zero-backend CMS. Run this admin anywhere; edit a separate site/content GitHub repo.</p>
     <div class="login-err" id="loginErr"></div>
     <div class="field">
-      <label>Site Repository URL</label>
-      <input id="repoUrl" placeholder="https://github.com/user/repo-site" autocomplete="off" spellcheck="false">
+      <label>Content / site repository URL</label>
+      <input id="repoUrl" placeholder="https://github.com/user/site-content-repo" autocomplete="off" spellcheck="false">
+      <div class="hint">This is the repository containing <span class="mono">docs/</span>, <span class="mono">fragments.json</span>, and the <span class="mono">content</span> branch. It can be different from the admin-hosting repo.</div>
     </div>
     <div class="field">
       <label>GitHub Personal Access Token</label>
       <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
-      <div class="hint">Use a <b>fine-grained PAT</b> scoped to just this repo with <b>Contents: Read &amp; write</b>. A classic <span class="mono">repo</span>-scoped token works but can write to <i>every</i> repo you own. Stored in localStorage (base64 — obfuscation, not encryption).</div>
+      <div class="hint">Use a <b>fine-grained PAT</b> scoped to the content/site repo with <b>Contents: Read &amp; write</b>. A classic <span class="mono">repo</span>-scoped token works but can write to <i>every</i> repo you own. Stored in localStorage (base64 — obfuscation, not encryption).</div>
     </div>
     <button class="btn" id="connectBtn">Connect</button>
   </div>

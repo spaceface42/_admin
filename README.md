@@ -84,3 +84,17 @@ RELEASE_CHECKLIST.md
 ```txt
 ARCHITECTURE.md
 ```
+
+
+## Admin repo vs content repo
+
+GitCMS can be hosted from one repository while editing another.
+
+Example:
+
+```txt
+_admin     = admin app / GitHub Pages host
+_blackhole = content/site repository
+```
+
+In the login screen, enter the content/site repository URL, not necessarily the admin-hosting repository URL.

@@ -1,6 +1,6 @@
 {
   "name": "gitcms-admin",
-  "version": "1.1.40-diagnostics-ui-polish",
+  "version": "1.1.43-simple-diagnostics",
   "private": true,
   "type": "module",
   "scripts": {

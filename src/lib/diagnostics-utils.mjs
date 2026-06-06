@@ -82,3 +82,22 @@ export function diagnosticsRowMeta(key, value) {
     isSha: /\bSHA\b/i.test(key) && /^[a-f0-9]{40}$/i.test(stringValue)
   };
 }
+
+export function inferGitHubPagesAdminRepo({ hostname = '', pathname = '' } = {}) {
+  const host = String(hostname || '').toLowerCase();
+  if (!host.endsWith('.github.io')) return '';
+
+  const owner = host.replace(/\.github\.io$/, '');
+  const firstSegment = String(pathname || '')
+    .split('/')
+    .filter(Boolean)[0];
+
+  if (!owner || !firstSegment) return '';
+
+  return `https://github.com/${owner}/${firstSegment}`;
+}
+
+export function adminVersionStatus({ currentVersion, expectedVersion }) {
+  if (!expectedVersion || currentVersion === expectedVersion) return 'ok';
+  return 'version differs';
+}

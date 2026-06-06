@@ -332,6 +332,35 @@
     color:var(--accent2);
     border-color:var(--accent2);
   }
+  .diag-advanced{
+    grid-column:1/-1;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:var(--bg);
+    margin:8px 0 14px;
+    overflow:hidden;
+  }
+  .diag-advanced > summary{
+    cursor:pointer;
+    padding:10px 12px;
+    color:var(--txt2);
+    font-size:12px;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    user-select:none;
+  }
+  .diag-advanced[open] > summary{
+    border-bottom:1px solid var(--line);
+    color:var(--txt);
+  }
+  .diag-grid-nested{
+    padding:12px;
+    margin-bottom:0;
+  }
+  .diag-grid-nested .diag-section:first-child{
+    margin-top:0;
+  }
   .diag-links{
     display:flex;
     flex-wrap:wrap;
