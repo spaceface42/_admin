@@ -1,86 +1,6 @@
-/* ---------- rendering ---------- */
+/* ---------- preview rendering ---------- */
+
 let previewBlobUrl=null;
-function setStatus(txt,busy){
-  el('statusTxt').textContent=txt;
-  el('refreshBtn').querySelector('svg').classList.toggle('spin',!!busy);
-}
-
-function renderTree(){
-  const tree=el('tree'); tree.innerHTML='';
-  const byFile=new Map();
-  for(const f of state.frags.values()){
-    if(!byFile.has(f.path)) byFile.set(f.path,[]);
-    byFile.get(f.path).push(f);
-  }
-  for(const [path,frags] of byFile){
-    const group=document.createElement('div');
-    group.className='file-group';
-    group.dataset.path=path;
-    const anyDirty=frags.some(f=>f.dirty);
-    if(anyDirty) group.classList.add('has-dirty');
-
-    const row=document.createElement('div');
-    row.className='file-row';
-    row.innerHTML=`
-      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
-      <span>${esc(path)}</span>
-      <span class="count">${frags.length}</span>
-      <span class="fdot"></span>`;
-    row.onclick=()=>group.classList.toggle('collapsed');
-    group.appendChild(row);
-
-    const list=document.createElement('div');
-    list.className='frag-list';
-    for(const f of frags){
-      const fr=document.createElement('div');
-      fr.className='frag-row'+(f.dirty?' dirty':'')+(f.id===state.activeId?' active':'');
-      fr.dataset.id=f.id;
-      fr.innerHTML=`
-        <span class="ddot"></span>
-        <span class="flabel">${esc(f.label)}</span>
-        <span class="fid">#${esc(f.id)}</span>`;
-      fr.onclick=()=>selectFragment(f.id);
-      list.appendChild(fr);
-    }
-    group.appendChild(list);
-    tree.appendChild(group);
-  }
-}
-
-function showEmpty(){
-  el('emptyState').style.display='flex';
-  el('editorPane').style.display='none';
-  el('sbPath').textContent='';
-}
-
-function selectFragment(id){
-  if(state.activeId && state.activeId!==id) syncActiveFromTextarea();
-  Store.setActiveFragment(id);
-  const f=state.frags.get(id);
-  el('emptyState').style.display='none';
-  el('editorPane').style.display='flex';
-  el('edId').textContent='#'+f.id;
-  el('edFile').textContent=f.path;
-  el('edLabel').value=f.label;
-  el('htmlArea').value=f.innerHTML;
-  el('wrapInfo').textContent=f.mode==='marker' ? `<!-- cms:start ${f.markerId||f.id} --> ${f.openTag} … ${f.closeTag||'</section>'} <!-- cms:end ${f.markerId||f.id} -->` : `${f.openTag} … ${f.closeTag||'</section>'}`;
-  el('sbPath').textContent=f.path;
-  updatePreview(f);
-  updateUnsavedBar();
-  // active highlight
-  document.querySelectorAll('.frag-row').forEach(r=>r.classList.toggle('active',r.dataset.id===id));
-}
-
-function syncActiveFromTextarea(){
-  const f=state.frags.get(state.activeId); if(!f) return;
-  f.innerHTML=el('htmlArea').value;
-  f.dirty=(f.innerHTML!==f.origHTML)||(labelChanged(f));
-}
-function labelChanged(f){
-  const m=state.manifest&&state.manifest.find(e=>e.id===f.id);
-  const orig=m?m.label:f.id;
-  return f.label!==orig;
-}
 
 function previewPathContext(){
   return {
@@ -214,9 +134,4 @@ function updatePreview(f){
     console.error('Preview update failed',e);
     setPreviewDocument(previewErrorDoc('Preview update failed',e.message||String(e)));
   }
-}
-
-function updateUnsavedBar(){
-  const anyDirty=[...state.frags.values()].some(f=>f.dirty);
-  el('sbUnsaved').classList.toggle('show',anyDirty);
 }

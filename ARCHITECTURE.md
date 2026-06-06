@@ -32,3 +32,13 @@ Runtime file:
 ```txt
 admin.html
 ```
+
+
+## Rendering modules
+
+```txt
+src/js/04-00-status-rendering.js
+src/js/04-10-tree-rendering.js
+src/js/04-20-editor-rendering.js
+src/js/04-30-preview-rendering.js
+```

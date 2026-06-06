@@ -30,9 +30,9 @@ async function doCommit(){
       return frag && frag.innerHTML!==frag.origHTML;
     });
 
-    // Use the live draft file as the base before writing. This keeps the
-    // one-person workflow forgiving when another GitCMS action, media upload,
-    // config save, or GitHub UI edit moved the work branch after load.
+    // Use the current content-branch file as the write base before saving.
+    // This bypasses cached preview/content-tree reads and gets the SHA expected
+    // by GitHub's Contents PUT endpoint. main is never used as a save source.
     if(htmlDirtyIds.length){
       let put=null;
       for(let attempt=1; attempt<=2; attempt++){
@@ -40,7 +40,7 @@ async function doCommit(){
           let content=fileRec.content;
           let sha=null;
           try{
-            const cur=await GitHubApi.getFile(f.path,state.workBranch);
+            const cur=await GitHubApi.getFileForWrite(f.path,state.workBranch);
             content=dec(cur.content);
             sha=cur.sha;
           }catch(e){ if(e.status!==404) throw e; }
@@ -93,7 +93,7 @@ async function doCommit(){
 function commitErrMsg(e){
   return esc(GitHubErrors.githubErrorMessage(e,{
     action:'Commit',
-    conflict:`GitHub reported a write conflict. GitCMS retried once using the live ${state.workBranch} file, but it still failed. Refresh and try again.`
+    conflict:`GitHub reported a write conflict. GitCMS retried once using the current ${state.workBranch} branch file via the Contents API, but it still failed. Refresh and try again.`
   }));
 }
 
@@ -138,7 +138,7 @@ async function commitManifest(msg){
   // include any fragments not yet in manifest? keep manifest as-is otherwise.
   let sha=null;
   try{
-    const cur=await GitHubApi.getFile(state.manifestPath,state.workBranch);
+    const cur=await GitHubApi.getFileForWrite(state.manifestPath,state.workBranch);
     sha=cur.sha;
   }catch(e){ if(e.status!==404) throw e; }
   await GitHubApi.saveFile(state.manifestPath,{message:msg+' (manifest)',content:enc(JSON.stringify(updated,null,2)+'\n'),branch:state.workBranch,sha});

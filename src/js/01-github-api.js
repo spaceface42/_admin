@@ -65,6 +65,16 @@ const GitHubApi = Object.freeze({
     const readRef=await this.contentReadRef(ref);
     return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,ref:readRef,githubPath:Paths.githubPath})));
   },
+  getContentForWrite(path,branch){
+    // Write-source read:
+    // Use the actual CMS work branch name directly and bypass the content-tree
+    // cache/pinned preview read path. This returns the SHA expected by the
+    // GitHub Contents PUT endpoint.
+    return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,ref:branch,githubPath:Paths.githubPath})));
+  },
+  getFileForWrite(path,branch){
+    return this.getContentForWrite(path,branch);
+  },
   getGitCommit(sha){
     return this.request(this.repoPath(GitHubApiUtils.commitPath(sha)));
   },

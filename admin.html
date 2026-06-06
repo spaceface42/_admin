@@ -1013,7 +1013,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.33-paths-module';
+const GITCMS_VERSION='1.1.35-content-write-source-fix';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -1304,6 +1304,16 @@ const GitHubApi = Object.freeze({
   async getContent(path,ref){
     const readRef=await this.contentReadRef(ref);
     return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,ref:readRef,githubPath:Paths.githubPath})));
+  },
+  getContentForWrite(path,branch){
+    // Write-source read:
+    // Use the actual CMS work branch name directly and bypass the content-tree
+    // cache/pinned preview read path. This returns the SHA expected by the
+    // GitHub Contents PUT endpoint.
+    return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,ref:branch,githubPath:Paths.githubPath})));
+  },
+  getFileForWrite(path,branch){
+    return this.getContentForWrite(path,branch);
   },
   getGitCommit(sha){
     return this.request(this.repoPath(GitHubApiUtils.commitPath(sha)));
@@ -2365,145 +2375,19 @@ function buildManifestFromState(){
   return [...state.frags.values()].map(f=>({id:f.id,file:f.path,label:f.label}));
 }
 
-/* ---------- preview/media path helpers ---------- */
-const PreviewPaths = (() => {
-  function normalizeRepoPath(path){
-    return (path||'').trim().replace(/^\/+|\/+$/g,'').replace(/\/+/g,'/');
-  }
+/* ---------- status rendering ---------- */
 
-  function normalizePathParts(path){
-    const parts=[];
-    for(const part of String(path||'').split('/')){
-      if(!part || part==='.') continue;
-      if(part==='..') parts.pop();
-      else parts.push(part);
-    }
-    return parts.join('/');
-  }
-
-  function isExternalOrSpecialUrl(url){
-    return /^(https?:|data:|blob:|mailto:|tel:|javascript:|#)/i.test(String(url||'').trim());
-  }
-
-  function escapeAttrLocal(s){
-    return String(s||'')
-      .replace(/&/g,'&amp;')
-      .replace(/"/g,'&quot;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;');
-  }
-
-  function escapeRegExp(s){
-    return String(s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  }
-
-  function splitPathSuffix(url){
-    const raw=String(url||'').trim();
-    const match=raw.match(/^([^?#]*)([?#].*)?$/);
-    return {
-      path:match ? match[1] : raw,
-      suffix:match && match[2] ? match[2] : ''
-    };
-  }
-
-  function encodeRepoPath(repoPath){
-    return normalizeRepoPath(repoPath).split('/').map(encodeURIComponent).join('/');
-  }
-
-  function rawGitHubUrl({owner,repo,ref,repoPath}){
-    return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(ref)}/${encodeRepoPath(repoPath)}`;
-  }
-
-  function addCacheBust(url,version){
-    if(version===undefined || version===null || version==='') return url;
-    return url + (url.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(version);
-  }
-
-  function resolveRepoRelativeUrl(url,filePath){
-    const raw=String(url||'').trim();
-    if(!raw || isExternalOrSpecialUrl(raw)) return null;
-
-    const {path,suffix}=splitPathSuffix(raw);
-    if(!path) return null;
-
-    if(path.startsWith('/')){
-      return normalizePathParts('docs/' + path.replace(/^\/+/,'')) + suffix;
-    }
-
-    const dir=normalizeRepoPath(filePath).split('/').slice(0,-1).join('/');
-    return normalizePathParts((dir ? dir + '/' : '') + path) + suffix;
-  }
-
-  function rawUrlForPreviewAsset(url,filePath,ctx){
-    const repoPath=resolveRepoRelativeUrl(url,filePath);
-    if(!repoPath) return url;
-
-    const {path,suffix}=splitPathSuffix(repoPath);
-    const raw=rawGitHubUrl({
-      owner:ctx.owner,
-      repo:ctx.repo,
-      ref:ctx.ref,
-      repoPath:path
-    }) + suffix;
-
-    return addCacheBust(raw,ctx.version);
-  }
-
-  function rewriteFullPageAssetUrls(pageHtml,filePath,ctx){
-    return String(pageHtml||'')
-      .replace(/\s(href)=["']([^"']+)["']/gi,(m,attr,url)=>{
-        if(isExternalOrSpecialUrl(url)) return m;
-        if(!/\.(css|ico|png|jpe?g|gif|webp|svg|avif)([?#].*)?$/i.test(url)) return m;
-        return ` ${attr}="${escapeAttrLocal(rawUrlForPreviewAsset(url,filePath,ctx))}"`;
-      })
-      .replace(/\s(src|poster)=["']([^"']+)["']/gi,(m,attr,url)=>{
-        if(isExternalOrSpecialUrl(url)) return m;
-        return ` ${attr}="${escapeAttrLocal(rawUrlForPreviewAsset(url,filePath,ctx))}"`;
-      })
-      .replace(/\s(srcset)=["']([^"']+)["']/gi,(m,attr,value)=>{
-        const rewritten=value.split(',').map(part=>{
-          const bits=part.trim().split(/\s+/);
-          if(!bits[0]) return part;
-          bits[0]=rawUrlForPreviewAsset(bits[0],filePath,ctx);
-          return bits.join(' ');
-        }).join(', ');
-        return ` ${attr}="${escapeAttrLocal(rewritten)}"`;
-      });
-  }
-
-  function rewriteFragmentMediaUrls(fragmentHtml,ctx){
-    if(!ctx.owner || !ctx.repo || !ctx.ref) return fragmentHtml;
-    const prefix=String(ctx.mediaPrefix||'');
-    const dir=normalizeRepoPath(ctx.mediaDir||'');
-    if(!prefix || !dir || prefix.includes('{path}') || prefix.includes('{file}')) return fragmentHtml;
-
-    const rawBase=`https://raw.githubusercontent.com/${encodeURIComponent(ctx.owner)}/${encodeURIComponent(ctx.repo)}/${encodeURIComponent(ctx.ref)}/${encodeRepoPath(dir)}/`;
-    const version=ctx.version;
-
-    return String(fragmentHtml||'').replace(new RegExp(`(src=["'])${escapeRegExp(prefix)}([^"']+)(["'])`,'gi'),(m,start,rest,end)=>{
-      return `${start}${addCacheBust(rawBase + rest,version)}${end}`;
-    });
-  }
-
-  return Object.freeze({
-    normalizeRepoPath,
-    normalizePathParts,
-    isExternalOrSpecialUrl,
-    splitPathSuffix,
-    resolveRepoRelativeUrl,
-    rawGitHubUrl,
-    rawUrlForPreviewAsset,
-    rewriteFullPageAssetUrls,
-    rewriteFragmentMediaUrls
-  });
-})();
-
-/* ---------- rendering ---------- */
-let previewBlobUrl=null;
 function setStatus(txt,busy){
   el('statusTxt').textContent=txt;
   el('refreshBtn').querySelector('svg').classList.toggle('spin',!!busy);
 }
+
+function updateUnsavedBar(){
+  const anyDirty=[...state.frags.values()].some(f=>f.dirty);
+  el('sbUnsaved').classList.toggle('show',anyDirty);
+}
+
+/* ---------- tree rendering ---------- */
 
 function renderTree(){
   const tree=el('tree'); tree.innerHTML='';
@@ -2553,6 +2437,8 @@ function showEmpty(){
   el('sbPath').textContent='';
 }
 
+/* ---------- editor rendering ---------- */
+
 function selectFragment(id){
   if(state.activeId && state.activeId!==id) syncActiveFromTextarea();
   Store.setActiveFragment(id);
@@ -2581,6 +2467,10 @@ function labelChanged(f){
   const orig=m?m.label:f.id;
   return f.label!==orig;
 }
+
+/* ---------- preview rendering ---------- */
+
+let previewBlobUrl=null;
 
 function previewPathContext(){
   return {
@@ -2716,10 +2606,138 @@ function updatePreview(f){
   }
 }
 
-function updateUnsavedBar(){
-  const anyDirty=[...state.frags.values()].some(f=>f.dirty);
-  el('sbUnsaved').classList.toggle('show',anyDirty);
-}
+/* ---------- preview/media path helpers ---------- */
+const PreviewPaths = (() => {
+  function normalizeRepoPath(path){
+    return (path||'').trim().replace(/^\/+|\/+$/g,'').replace(/\/+/g,'/');
+  }
+
+  function normalizePathParts(path){
+    const parts=[];
+    for(const part of String(path||'').split('/')){
+      if(!part || part==='.') continue;
+      if(part==='..') parts.pop();
+      else parts.push(part);
+    }
+    return parts.join('/');
+  }
+
+  function isExternalOrSpecialUrl(url){
+    return /^(https?:|data:|blob:|mailto:|tel:|javascript:|#)/i.test(String(url||'').trim());
+  }
+
+  function escapeAttrLocal(s){
+    return String(s||'')
+      .replace(/&/g,'&amp;')
+      .replace(/"/g,'&quot;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;');
+  }
+
+  function escapeRegExp(s){
+    return String(s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  }
+
+  function splitPathSuffix(url){
+    const raw=String(url||'').trim();
+    const match=raw.match(/^([^?#]*)([?#].*)?$/);
+    return {
+      path:match ? match[1] : raw,
+      suffix:match && match[2] ? match[2] : ''
+    };
+  }
+
+  function encodeRepoPath(repoPath){
+    return normalizeRepoPath(repoPath).split('/').map(encodeURIComponent).join('/');
+  }
+
+  function rawGitHubUrl({owner,repo,ref,repoPath}){
+    return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(ref)}/${encodeRepoPath(repoPath)}`;
+  }
+
+  function addCacheBust(url,version){
+    if(version===undefined || version===null || version==='') return url;
+    return url + (url.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(version);
+  }
+
+  function resolveRepoRelativeUrl(url,filePath){
+    const raw=String(url||'').trim();
+    if(!raw || isExternalOrSpecialUrl(raw)) return null;
+
+    const {path,suffix}=splitPathSuffix(raw);
+    if(!path) return null;
+
+    if(path.startsWith('/')){
+      return normalizePathParts('docs/' + path.replace(/^\/+/,'')) + suffix;
+    }
+
+    const dir=normalizeRepoPath(filePath).split('/').slice(0,-1).join('/');
+    return normalizePathParts((dir ? dir + '/' : '') + path) + suffix;
+  }
+
+  function rawUrlForPreviewAsset(url,filePath,ctx){
+    const repoPath=resolveRepoRelativeUrl(url,filePath);
+    if(!repoPath) return url;
+
+    const {path,suffix}=splitPathSuffix(repoPath);
+    const raw=rawGitHubUrl({
+      owner:ctx.owner,
+      repo:ctx.repo,
+      ref:ctx.ref,
+      repoPath:path
+    }) + suffix;
+
+    return addCacheBust(raw,ctx.version);
+  }
+
+  function rewriteFullPageAssetUrls(pageHtml,filePath,ctx){
+    return String(pageHtml||'')
+      .replace(/\s(href)=["']([^"']+)["']/gi,(m,attr,url)=>{
+        if(isExternalOrSpecialUrl(url)) return m;
+        if(!/\.(css|ico|png|jpe?g|gif|webp|svg|avif)([?#].*)?$/i.test(url)) return m;
+        return ` ${attr}="${escapeAttrLocal(rawUrlForPreviewAsset(url,filePath,ctx))}"`;
+      })
+      .replace(/\s(src|poster)=["']([^"']+)["']/gi,(m,attr,url)=>{
+        if(isExternalOrSpecialUrl(url)) return m;
+        return ` ${attr}="${escapeAttrLocal(rawUrlForPreviewAsset(url,filePath,ctx))}"`;
+      })
+      .replace(/\s(srcset)=["']([^"']+)["']/gi,(m,attr,value)=>{
+        const rewritten=value.split(',').map(part=>{
+          const bits=part.trim().split(/\s+/);
+          if(!bits[0]) return part;
+          bits[0]=rawUrlForPreviewAsset(bits[0],filePath,ctx);
+          return bits.join(' ');
+        }).join(', ');
+        return ` ${attr}="${escapeAttrLocal(rewritten)}"`;
+      });
+  }
+
+  function rewriteFragmentMediaUrls(fragmentHtml,ctx){
+    if(!ctx.owner || !ctx.repo || !ctx.ref) return fragmentHtml;
+    const prefix=String(ctx.mediaPrefix||'');
+    const dir=normalizeRepoPath(ctx.mediaDir||'');
+    if(!prefix || !dir || prefix.includes('{path}') || prefix.includes('{file}')) return fragmentHtml;
+
+    const rawBase=`https://raw.githubusercontent.com/${encodeURIComponent(ctx.owner)}/${encodeURIComponent(ctx.repo)}/${encodeURIComponent(ctx.ref)}/${encodeRepoPath(dir)}/`;
+    const version=ctx.version;
+
+    return String(fragmentHtml||'').replace(new RegExp(`(src=["'])${escapeRegExp(prefix)}([^"']+)(["'])`,'gi'),(m,start,rest,end)=>{
+      return `${start}${addCacheBust(rawBase + rest,version)}${end}`;
+    });
+  }
+
+  return Object.freeze({
+    normalizeRepoPath,
+    normalizePathParts,
+    isExternalOrSpecialUrl,
+    splitPathSuffix,
+    resolveRepoRelativeUrl,
+    rawGitHubUrl,
+    rawUrlForPreviewAsset,
+    rewriteFullPageAssetUrls,
+    rewriteFragmentMediaUrls
+  });
+})();
 
 /* ---------- HTML snippets ---------- */
 function selectedEditorText(){
@@ -2830,9 +2848,9 @@ async function doCommit(){
       return frag && frag.innerHTML!==frag.origHTML;
     });
 
-    // Use the live draft file as the base before writing. This keeps the
-    // one-person workflow forgiving when another GitCMS action, media upload,
-    // config save, or GitHub UI edit moved the work branch after load.
+    // Use the current content-branch file as the write base before saving.
+    // This bypasses cached preview/content-tree reads and gets the SHA expected
+    // by GitHub's Contents PUT endpoint. main is never used as a save source.
     if(htmlDirtyIds.length){
       let put=null;
       for(let attempt=1; attempt<=2; attempt++){
@@ -2840,7 +2858,7 @@ async function doCommit(){
           let content=fileRec.content;
           let sha=null;
           try{
-            const cur=await GitHubApi.getFile(f.path,state.workBranch);
+            const cur=await GitHubApi.getFileForWrite(f.path,state.workBranch);
             content=dec(cur.content);
             sha=cur.sha;
           }catch(e){ if(e.status!==404) throw e; }
@@ -2893,7 +2911,7 @@ async function doCommit(){
 function commitErrMsg(e){
   return esc(GitHubErrors.githubErrorMessage(e,{
     action:'Commit',
-    conflict:`GitHub reported a write conflict. GitCMS retried once using the live ${state.workBranch} file, but it still failed. Refresh and try again.`
+    conflict:`GitHub reported a write conflict. GitCMS retried once using the current ${state.workBranch} branch file via the Contents API, but it still failed. Refresh and try again.`
   }));
 }
 
@@ -2938,7 +2956,7 @@ async function commitManifest(msg){
   // include any fragments not yet in manifest? keep manifest as-is otherwise.
   let sha=null;
   try{
-    const cur=await GitHubApi.getFile(state.manifestPath,state.workBranch);
+    const cur=await GitHubApi.getFileForWrite(state.manifestPath,state.workBranch);
     sha=cur.sha;
   }catch(e){ if(e.status!==404) throw e; }
   await GitHubApi.saveFile(state.manifestPath,{message:msg+' (manifest)',content:enc(JSON.stringify(updated,null,2)+'\n'),branch:state.workBranch,sha});
