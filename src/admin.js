@@ -6,6 +6,115 @@
     node build-admin.mjs
 */
 
+/* ---------- GitHub API utility helpers ---------- */
+const GitHubApiUtils = (() => {
+  const GITHUB_API_VERSION = '2022-11-28';
+
+  function encodePathPart(value) {
+    return encodeURIComponent(String(value || ''));
+  }
+
+  function normalizeApiPath(path = '') {
+    const raw = String(path || '');
+    return raw.startsWith('/') ? raw : `/${raw}`;
+  }
+
+  function repoPath({ owner, repo, path = '' }) {
+    return `/repos/${owner}/${repo}${path || ''}`;
+  }
+
+  function requestHeaders({ token, hasBody = false }) {
+    return {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': GITHUB_API_VERSION,
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {})
+    };
+  }
+
+  function requestBody(body) {
+    return body ? JSON.stringify(body) : undefined;
+  }
+
+  function branchPath(branch) {
+    return `/branches/${encodePathPart(branch)}`;
+  }
+
+  function refPath(branch) {
+    return `/git/ref/heads/${encodePathPart(branch)}`;
+  }
+
+  function updateRefPath(branch) {
+    return `/git/refs/heads/${encodePathPart(branch)}`;
+  }
+
+  function createRefBody({ branch, sha }) {
+    return {
+      ref: `refs/heads/${branch}`,
+      sha
+    };
+  }
+
+  function updateRefBody({ sha, force = false }) {
+    return { sha, force };
+  }
+
+  function contentsPath({ path, ref, githubPath }) {
+    const base = `/contents/${githubPath(path)}`;
+    return ref ? `${base}?ref=${encodePathPart(ref)}` : base;
+  }
+
+  function commitPath(sha) {
+    return `/git/commits/${encodePathPart(sha)}`;
+  }
+
+  function treePath(ref, { recursive = false } = {}) {
+    return `/git/trees/${encodePathPart(ref)}${recursive ? '?recursive=1' : ''}`;
+  }
+
+  function blobPath(sha) {
+    return `/git/blobs/${encodePathPart(sha)}`;
+  }
+
+  function mergePath() {
+    return '/merges';
+  }
+
+  function mergeBody({ base, head, commit_message }) {
+    return { base, head, commit_message };
+  }
+
+  function comparePath({ base, head }) {
+    return `/compare/${encodePathPart(base)}...${encodePathPart(head)}`;
+  }
+
+  function pagesPath() {
+    return '/pages';
+  }
+
+  return Object.freeze({
+    GITHUB_API_VERSION,
+    encodePathPart,
+    normalizeApiPath,
+    repoPath,
+    requestHeaders,
+    requestBody,
+    branchPath,
+    refPath,
+    updateRefPath,
+    createRefBody,
+    updateRefBody,
+    contentsPath,
+    commitPath,
+    treePath,
+    blobPath,
+    mergePath,
+    mergeBody,
+    comparePath,
+    pagesPath
+  });
+})();
+
 /* ---------- connect utility helpers ---------- */
 const ConnectUtils = (() => {
   function cleanRepoPart(value) {
@@ -191,7 +300,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.28-release-hardening';
+const GITCMS_VERSION='1.1.30-github-api-module';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -401,9 +510,83 @@ const Paths = Object.freeze({
   }
 });
 
+function parseRepoUrl(url){
+  return ConnectUtils.parseRepoUrl(url);
+}
+
+
+
+function ghPath(path){
+  return Paths.githubPath(path);
+}
+function normalizeRepoPath(path){
+  return Paths.normalizeRepoPath(path);
+}
+function defaultPublicPrefixFor(dir){
+  return Paths.defaultPublicPrefixFor(dir);
+}
+function normalizePublicPrefix(prefix,dir){
+  return Paths.normalizePublicPrefix(prefix,dir);
+}
+function mediaDir(){
+  const m=configMedia();
+  return Paths.normalizeRepoPath((m && m.dir) || DEFAULT_MEDIA_DIR);
+}
+function mediaPrefix(){
+  const m=configMedia();
+  const raw=(m && m.publicPrefix) || '';
+  return Paths.normalizePublicPrefix(raw,mediaDir());
+}
+
+function contentAssetRef(){
+  return state.contentTree && state.contentTree.commitSha ? state.contentTree.commitSha : state.workBranch;
+}
+
+function previewCssList(){
+  const p=gitcmsConfig && gitcmsConfig.preview;
+  if(!p || typeof p!=='object') return [];
+  const css=Array.isArray(p.css) ? p.css : (typeof p.css==='string' ? [p.css] : []);
+  return css.map(x=>String(x).trim()).filter(Boolean);
+}
+function publicPathToRepoPath(publicPath){
+  return Paths.publicPathToRepoPath(publicPath);
+}
+function rawUrlForRepoPath(path){
+  return Paths.rawUrlForRepoPath(path,contentAssetRef());
+}
+function previewCssTags(){
+  if(!state.owner || !state.repo) return '';
+  return previewCssList().map(path=>{
+    const repoPath=Paths.publicPathToRepoPath(path);
+    const href=Paths.rawUrlForRepoPath(repoPath,contentAssetRef()) + '?v=' + Date.now();
+    return `<link rel="stylesheet" href="${escAttr(href)}">`;
+  }).join('\n');
+}
+
+function mediaPublicUrl(path){
+  return Paths.mediaPublicUrl(path,mediaPrefix());
+}
+
+function mimeFromName(name){
+  const n=name.toLowerCase();
+  if(n.endsWith('.svg')) return 'image/svg+xml';
+  if(n.endsWith('.png')) return 'image/png';
+  if(n.endsWith('.webp')) return 'image/webp';
+  if(n.endsWith('.gif')) return 'image/gif';
+  if(n.endsWith('.avif')) return 'image/avif';
+  return 'image/jpeg';
+}
+function escAttr(s){
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ---------- GitHub API client ---------- */
+// Depends on state/Store/Paths/LastWriteCommitCache from 00-core.js
+// and GitHubApiUtils from 00-api-utils.js.
+
 const GitHubApi = Object.freeze({
   repoPath(path=''){
-    return `/repos/${state.owner}/${state.repo}${path}`;
+    return GitHubApiUtils.repoPath({owner:state.owner,repo:state.repo,path});
   },
   async request(path,{method='GET',body,raw=false}={}){
     // Keep the request CORS-simple enough for local file:// usage.
@@ -411,13 +594,8 @@ const GitHubApi = Object.freeze({
     // not by custom no-cache headers.
     const res=await fetch(API+path,{
       method,
-      headers:{
-        'Authorization':'Bearer '+state.token,
-        'Accept':'application/vnd.github+json',
-        'X-GitHub-Api-Version':'2022-11-28',
-        ...(body?{'Content-Type':'application/json'}:{})
-      },
-      body:body?JSON.stringify(body):undefined
+      headers:GitHubApiUtils.requestHeaders({token:state.token,hasBody:!!body}),
+      body:GitHubApiUtils.requestBody(body)
     });
     if(!res.ok){
       let detail=''; try{detail=(await res.json()).message||'';}catch(e){}
@@ -432,24 +610,24 @@ const GitHubApi = Object.freeze({
     return this.request(this.repoPath());
   },
   getBranch(branch){
-    return this.request(this.repoPath(`/branches/${encodeURIComponent(branch)}`));
+    return this.request(this.repoPath(GitHubApiUtils.branchPath(branch)));
   },
   getRef(branch){
-    return this.request(this.repoPath(`/git/ref/heads/${encodeURIComponent(branch)}`));
+    return this.request(this.repoPath(GitHubApiUtils.refPath(branch)));
   },
   async createRef(branch,sha){
     return this.request(this.repoPath('/git/refs'),{
       method:'POST',
-      body:{ref:`refs/heads/${branch}`,sha}
+      body:GitHubApiUtils.createRefBody({branch,sha})
     });
   },
   createBranchFromSha(branch,sha){
     return this.createRef(branch,sha);
   },
   async updateRef(branch,sha,{force=false}={}){
-    const out=await this.request(this.repoPath(`/git/refs/heads/${encodeURIComponent(branch)}`),{
+    const out=await this.request(this.repoPath(GitHubApiUtils.updateRefPath(branch)),{
       method:'PATCH',
-      body:{sha,force}
+      body:GitHubApiUtils.updateRefBody({sha,force})
     });
     LastWriteCommitCache.set(branch,sha);
     return out;
@@ -467,16 +645,16 @@ const GitHubApi = Object.freeze({
   },
   async getContent(path,ref){
     const readRef=await this.contentReadRef(ref);
-    return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}?ref=${encodeURIComponent(readRef)}`));
+    return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,ref:readRef,githubPath:Paths.githubPath})));
   },
   getGitCommit(sha){
-    return this.request(this.repoPath(`/git/commits/${encodeURIComponent(sha)}`));
+    return this.request(this.repoPath(GitHubApiUtils.commitPath(sha)));
   },
   getTreeBySha(treeSha,{recursive=false}={}){
-    return this.request(this.repoPath(`/git/trees/${encodeURIComponent(treeSha)}${recursive?'?recursive=1':''}`));
+    return this.request(this.repoPath(GitHubApiUtils.treePath(treeSha,{recursive})));
   },
   getBlob(sha){
-    return this.request(this.repoPath(`/git/blobs/${encodeURIComponent(sha)}`));
+    return this.request(this.repoPath(GitHubApiUtils.blobPath(sha)));
   },
   async getBranchTreeSnapshot(branch,{force=false,preferLastWrite=true}={}){
     if(!force && state.contentTree && state.contentTree.branch===branch){
@@ -560,7 +738,7 @@ const GitHubApi = Object.freeze({
     return this.getContent(path,ref);
   },
   putContent(path,body){
-    return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}`),{method:'PUT',body});
+    return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,githubPath:Paths.githubPath})),{method:'PUT',body});
   },
   async saveFile(path,{message,content,branch,sha}){
     const out=await this.putContent(path,{message,content,branch,...(sha?{sha}:{})});
@@ -568,7 +746,7 @@ const GitHubApi = Object.freeze({
     return out;
   },
   deleteContent(path,body){
-    return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}`),{method:'DELETE',body});
+    return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,githubPath:Paths.githubPath})),{method:'DELETE',body});
   },
   async deleteFile(path,{message,sha,branch}){
     const out=await this.deleteContent(path,{message,sha,branch});
@@ -576,21 +754,21 @@ const GitHubApi = Object.freeze({
     return out;
   },
   async merge(base,head,commit_message){
-    const out=await this.request(this.repoPath('/merges'),{method:'POST',body:{base,head,commit_message}});
+    const out=await this.request(this.repoPath(GitHubApiUtils.mergePath()),{method:'POST',body:GitHubApiUtils.mergeBody({base,head,commit_message})});
     if(out && out.sha) LastWriteCommitCache.set(base,out.sha);
     return out;
   },
   compare(base,head){
-    return this.request(this.repoPath(`/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`));
+    return this.request(this.repoPath(GitHubApiUtils.comparePath({base,head})));
   },
   tree(ref){
-    return this.request(this.repoPath(`/git/trees/${encodeURIComponent(ref)}?recursive=1`));
+    return this.request(this.repoPath(GitHubApiUtils.treePath(ref,{recursive:true})));
   },
   getRecursiveTree(ref){
     return this.tree(ref);
   },
   pages(){
-    return this.request(this.repoPath('/pages'));
+    return this.request(this.repoPath(GitHubApiUtils.pagesPath()));
   },
   getPagesInfo(){
     return this.pages();
@@ -600,77 +778,6 @@ const GitHubApi = Object.freeze({
 // Compatibility wrapper. New code should prefer GitHubApi.request().
 async function gh(path,opts={}){
   return GitHubApi.request(path,opts);
-}
-
-
-function parseRepoUrl(url){
-  return ConnectUtils.parseRepoUrl(url);
-}
-
-
-
-function ghPath(path){
-  return Paths.githubPath(path);
-}
-function normalizeRepoPath(path){
-  return Paths.normalizeRepoPath(path);
-}
-function defaultPublicPrefixFor(dir){
-  return Paths.defaultPublicPrefixFor(dir);
-}
-function normalizePublicPrefix(prefix,dir){
-  return Paths.normalizePublicPrefix(prefix,dir);
-}
-function mediaDir(){
-  const m=configMedia();
-  return Paths.normalizeRepoPath((m && m.dir) || DEFAULT_MEDIA_DIR);
-}
-function mediaPrefix(){
-  const m=configMedia();
-  const raw=(m && m.publicPrefix) || '';
-  return Paths.normalizePublicPrefix(raw,mediaDir());
-}
-
-function contentAssetRef(){
-  return state.contentTree && state.contentTree.commitSha ? state.contentTree.commitSha : state.workBranch;
-}
-
-function previewCssList(){
-  const p=gitcmsConfig && gitcmsConfig.preview;
-  if(!p || typeof p!=='object') return [];
-  const css=Array.isArray(p.css) ? p.css : (typeof p.css==='string' ? [p.css] : []);
-  return css.map(x=>String(x).trim()).filter(Boolean);
-}
-function publicPathToRepoPath(publicPath){
-  return Paths.publicPathToRepoPath(publicPath);
-}
-function rawUrlForRepoPath(path){
-  return Paths.rawUrlForRepoPath(path,contentAssetRef());
-}
-function previewCssTags(){
-  if(!state.owner || !state.repo) return '';
-  return previewCssList().map(path=>{
-    const repoPath=Paths.publicPathToRepoPath(path);
-    const href=Paths.rawUrlForRepoPath(repoPath,contentAssetRef()) + '?v=' + Date.now();
-    return `<link rel="stylesheet" href="${escAttr(href)}">`;
-  }).join('\n');
-}
-
-function mediaPublicUrl(path){
-  return Paths.mediaPublicUrl(path,mediaPrefix());
-}
-
-function mimeFromName(name){
-  const n=name.toLowerCase();
-  if(n.endsWith('.svg')) return 'image/svg+xml';
-  if(n.endsWith('.png')) return 'image/png';
-  if(n.endsWith('.webp')) return 'image/webp';
-  if(n.endsWith('.gif')) return 'image/gif';
-  if(n.endsWith('.avif')) return 'image/avif';
-  return 'image/jpeg';
-}
-function escAttr(s){
-  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 /* ---------- GitHub/API error helpers ---------- */

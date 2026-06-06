@@ -77,3 +77,10 @@ STABLE.md
 PUBLISH_WORKFLOW.md
 RELEASE_CHECKLIST.md
 ```
+
+
+## Architecture
+
+```txt
+ARCHITECTURE.md
+```

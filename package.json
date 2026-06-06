@@ -1,6 +1,6 @@
 {
   "name": "gitcms-admin",
-  "version": "1.1.28-release-hardening",
+  "version": "1.1.30-github-api-module",
   "private": true,
   "type": "module",
   "scripts": {
