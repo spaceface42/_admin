@@ -3,9 +3,11 @@ export function diagnosticsStatusClass(key, value) {
   if (key === 'Validation warnings' && value !== '0') return 'warn';
   if (key === 'Config loaded' && value === 'not found') return 'warn';
   if (key === 'Manifest loaded' && value === 'no') return 'warn';
+  if (key === 'Cache status' && /stale|differs|failed|warning/i.test(String(value))) return 'warn';
+  if (key === 'Cache status' && /ok|aligned|none/i.test(String(value))) return 'ok';
 
   if (
-    ['Repository', 'Default branch', 'Content branch', 'Media folder', 'Media URL prefix'].includes(
+    ['Repository', 'Default branch', 'Content branch', 'Media folder', 'Media URL prefix', 'Cache status'].includes(
       key
     ) &&
     value &&
@@ -46,4 +48,23 @@ export function diagnosticsWorkflowNote({ workBranch, defaultBranch, mediaDir, m
     mediaDir: mediaDir || 'not set',
     mediaPrefix: mediaPrefix || 'not set'
   };
+}
+
+export function diagnosticsTextSections(sections = [], warnings = []) {
+  const body = sections
+    .map(section => {
+      const rows = Object.entries(section.data || {})
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+      return `${section.title}\n${'-'.repeat(section.title.length)}\n${rows}`;
+    })
+    .join('\n\n');
+
+  if (!warnings.length) return body;
+
+  return (
+    body +
+    '\n\nValidation warnings:\n' +
+    warnings.map(warning => `- ${warning.kind}: ${warning.msg}`).join('\n')
+  );
 }

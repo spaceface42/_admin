@@ -76,7 +76,7 @@ function updateBranchLabels(){
   if(pubTitle) pubTitle.textContent=`Publish to ${state.defaultBranch}`;
   const pubDesc=document.querySelector('#pubModal .mdesc');
   if(pubDesc){
-    pubDesc.innerHTML=`Sync <b>${esc(state.defaultBranch)}</b> → <b>${esc(state.workBranch)}</b>, then merge <b>${esc(state.workBranch)}</b> → <b>${esc(state.defaultBranch)}</b>. The GitHub Action will deploy <span class="mono">docs/</span> to Pages.`;
+    pubDesc.innerHTML=`Deploy <b>${esc(state.workBranch)}</b> to <b>${esc(state.defaultBranch)}</b>. The GitHub Action will deploy <span class="mono">docs/</span> to Pages.`;
   }
 }
 

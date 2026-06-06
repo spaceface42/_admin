@@ -4,8 +4,8 @@
 el('diagnosticsBtn').onclick=openDiagnostics;
 el('diagnosticsClose').onclick=()=>el('diagnosticsModal').classList.remove('show');
 el('diagnosticsCloseTop').onclick=()=>el('diagnosticsModal').classList.remove('show');
-el('diagnosticsRefresh').onclick=renderDiagnostics;
-el('diagnosticsCopy').onclick=copyDiagnostics;
+el('diagnosticsRefresh').onclick=()=>renderDiagnostics();
+el('diagnosticsCopy').onclick=()=>copyDiagnostics();
 
 el('openContentBtn').onclick=openContentBranch;
 el('openLiveBtn').onclick=openLiveSite;

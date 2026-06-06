@@ -4,7 +4,7 @@ el('saveManifestBtn').onclick=async()=>{
   try{
     let sha=null;
     try{
-      const cur=await GitHubApi.getFile(state.manifestPath,state.workBranch);
+      const cur=await GitHubApi.getFileForWrite(state.manifestPath,state.workBranch);
       sha=cur.sha;
     }catch(e){ if(e.status!==404) throw e; }
 

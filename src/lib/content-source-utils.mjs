@@ -69,3 +69,28 @@ export function findBlobInTree(tree, path) {
 export function normalizeBlobContent(content) {
   return String(content || '').replace(/\s+/g, '');
 }
+
+export function chooseReadCommitFromCacheValidation({ branchSha, cachedSha, cacheAheadBy }) {
+  if (!branchSha) {
+    return { commitSha: '', source: 'branch ref' };
+  }
+
+  if (!cachedSha || cachedSha === branchSha) {
+    return {
+      commitSha: branchSha,
+      source: cachedSha ? 'branch ref + cached write' : 'branch ref'
+    };
+  }
+
+  if (typeof cacheAheadBy === 'number' && cacheAheadBy > 0) {
+    return {
+      commitSha: cachedSha,
+      source: 'last successful write'
+    };
+  }
+
+  return {
+    commitSha: branchSha,
+    source: 'branch ref'
+  };
+}

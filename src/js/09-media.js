@@ -72,7 +72,7 @@ async function saveConfig(){
   btn.disabled=true; btn.textContent='Saving…';
 
   try{
-    const existing=(await loadGitCMSConfig(true,[state.workBranch,state.defaultBranch]))||{};
+    const existing=(await loadGitCMSConfig(true,[state.workBranch]))||{};
     const next=ConfigUtils.buildNextGitCMSConfig(existing,{
       manifestPath:newManifestPath,
       mediaDir:newMediaDir,
@@ -84,7 +84,7 @@ async function saveConfig(){
 
     let sha=null;
     try{
-      const cur=await GitHubApi.getFile(CONFIG_PATH,state.workBranch);
+      const cur=await GitHubApi.getFileForWrite(CONFIG_PATH,state.workBranch);
       sha=cur.sha;
     }catch(e){ if(e.status!==404) throw e; }
 
@@ -371,7 +371,7 @@ async function confirmDeleteMedia(){
   try{
     let sha=item.sha || null;
     if(!sha){
-      const cur=await GitHubApi.getFile(path,state.workBranch);
+      const cur=await GitHubApi.getFileForWrite(path,state.workBranch);
       sha=cur.sha;
     }
 
@@ -428,7 +428,7 @@ function readFileBase64(file){
 
 async function mediaPathExists(path){
   try{
-    await GitHubApi.getFile(path,state.workBranch);
+    await GitHubApi.getFileForWrite(path,state.workBranch);
     return true;
   }catch(e){
     if(e.status===404) return false;

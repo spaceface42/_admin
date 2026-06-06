@@ -289,6 +289,18 @@
     gap:8px 12px;
     margin-bottom:18px;
   }
+  .diag-section{
+    grid-column:1/-1;
+    margin:12px 0 2px;
+    padding:8px 0 5px;
+    border-bottom:1px solid var(--line);
+    color:var(--txt);
+    font-size:12px;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:.09em;
+  }
+  .diag-section:first-child{margin-top:0}
   .diag-key{
     font-size:11px;
     text-transform:uppercase;

@@ -300,7 +300,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.35-content-write-source-fix';
+const GITCMS_VERSION='1.1.38-diagnostics-cache-section';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -611,29 +611,55 @@ const GitHubApi = Object.freeze({
   getBlob(sha){
     return this.request(this.repoPath(GitHubApiUtils.blobPath(sha)));
   },
+  async resolveBranchCommitForRead(branch,{preferLastWrite=true}={}){
+    const ref=await this.getRef(branch);
+    const branchSha=ref && ref.object ? ref.object.sha : '';
+
+    if(!branchSha) throw new Error(`Could not resolve ${branch} branch SHA.`);
+
+    const cachedSha=preferLastWrite && branch===state.workBranch
+      ? LastWriteCommitCache.get(branch)
+      : '';
+
+    if(!cachedSha || cachedSha===branchSha){
+      return {
+        commitSha:branchSha,
+        source:cachedSha ? 'branch ref + cached write' : 'branch ref'
+      };
+    }
+
+    // The local write cache exists to avoid GitHub branch-ref lag immediately
+    // after Save → content. But if the real content branch moved on later, that
+    // cached SHA becomes stale and must not override the branch.
+    //
+    // Compare branchSha...cachedSha:
+    // - ahead_by > 0 means cachedSha contains commits not visible at branchSha,
+    //   so the cache is newer and should be used.
+    // - ahead_by === 0, behind, or compare failure means branch ref wins.
+    try{
+      const cmp=await this.compare(branchSha,cachedSha);
+      if(cmp && typeof cmp.ahead_by==='number' && cmp.ahead_by>0){
+        return {commitSha:cachedSha,source:'last successful write'};
+      }
+    }catch(e){
+      console.warn('Could not validate cached content SHA; using branch ref',e);
+    }
+
+    LastWriteCommitCache.clear(branch);
+    return {commitSha:branchSha,source:'branch ref'};
+  },
+
   async getBranchTreeSnapshot(branch,{force=false,preferLastWrite=true}={}){
     if(!force && state.contentTree && state.contentTree.branch===branch){
       return state.contentTree;
     }
 
-    // Critical freshness fix:
-    // If this browser just saved to the content branch, GitHub returned the
-    // exact new commit SHA. Use that SHA for subsequent refresh/login reads
-    // instead of asking GitHub's branch/ref endpoints, which can briefly lag.
-    const chosen=ContentSourceUtils.choosePinnedCommit({
-      branch,
-      workBranch:state.workBranch,
-      preferLastWrite,
-      cachedSha:LastWriteCommitCache.get(branch)
-    });
-    let commitSha=chosen.commitSha;
-    let source=chosen.source;
-
-    if(!commitSha){
-      const ref=await this.getRef(branch);
-      commitSha=ref.object.sha;
-      source='branch ref';
-    }
+    // Resolve content source carefully:
+    // Prefer a pinned write SHA only if it is validated as newer than the
+    // current branch ref. Otherwise a stale browser cache could load old content.
+    const resolved=await this.resolveBranchCommitForRead(branch,{preferLastWrite});
+    const commitSha=resolved.commitSha;
+    const source=resolved.source;
 
     const commit=await this.getGitCommit(commitSha);
     const treeSha=commit.tree.sha;
@@ -1482,7 +1508,7 @@ function updateBranchLabels(){
   if(pubTitle) pubTitle.textContent=`Publish to ${state.defaultBranch}`;
   const pubDesc=document.querySelector('#pubModal .mdesc');
   if(pubDesc){
-    pubDesc.innerHTML=`Sync <b>${esc(state.defaultBranch)}</b> → <b>${esc(state.workBranch)}</b>, then merge <b>${esc(state.workBranch)}</b> → <b>${esc(state.defaultBranch)}</b>. The GitHub Action will deploy <span class="mono">docs/</span> to Pages.`;
+    pubDesc.innerHTML=`Deploy <b>${esc(state.workBranch)}</b> to <b>${esc(state.defaultBranch)}</b>. The GitHub Action will deploy <span class="mono">docs/</span> to Pages.`;
   }
 }
 
@@ -2518,7 +2544,7 @@ async function saveConfig(){
   btn.disabled=true; btn.textContent='Saving…';
 
   try{
-    const existing=(await loadGitCMSConfig(true,[state.workBranch,state.defaultBranch]))||{};
+    const existing=(await loadGitCMSConfig(true,[state.workBranch]))||{};
     const next=ConfigUtils.buildNextGitCMSConfig(existing,{
       manifestPath:newManifestPath,
       mediaDir:newMediaDir,
@@ -2530,7 +2556,7 @@ async function saveConfig(){
 
     let sha=null;
     try{
-      const cur=await GitHubApi.getFile(CONFIG_PATH,state.workBranch);
+      const cur=await GitHubApi.getFileForWrite(CONFIG_PATH,state.workBranch);
       sha=cur.sha;
     }catch(e){ if(e.status!==404) throw e; }
 
@@ -2817,7 +2843,7 @@ async function confirmDeleteMedia(){
   try{
     let sha=item.sha || null;
     if(!sha){
-      const cur=await GitHubApi.getFile(path,state.workBranch);
+      const cur=await GitHubApi.getFileForWrite(path,state.workBranch);
       sha=cur.sha;
     }
 
@@ -2874,7 +2900,7 @@ function readFileBase64(file){
 
 async function mediaPathExists(path){
   try{
-    await GitHubApi.getFile(path,state.workBranch);
+    await GitHubApi.getFileForWrite(path,state.workBranch);
     return true;
   }catch(e){
     if(e.status===404) return false;
@@ -3122,7 +3148,7 @@ el('saveManifestBtn').onclick=async()=>{
   try{
     let sha=null;
     try{
-      const cur=await GitHubApi.getFile(state.manifestPath,state.workBranch);
+      const cur=await GitHubApi.getFileForWrite(state.manifestPath,state.workBranch);
       sha=cur.sha;
     }catch(e){ if(e.status!==404) throw e; }
 
@@ -3242,9 +3268,11 @@ const DiagnosticsUtils = (() => {
     if (key === 'Validation warnings' && value !== '0') return 'warn';
     if (key === 'Config loaded' && value === 'not found') return 'warn';
     if (key === 'Manifest loaded' && value === 'no') return 'warn';
+    if (key === 'Cache status' && /stale|differs|failed|warning/i.test(String(value))) return 'warn';
+    if (key === 'Cache status' && /ok|aligned|none/i.test(String(value))) return 'ok';
 
     if (
-      ['Repository', 'Default branch', 'Content branch', 'Media folder', 'Media URL prefix'].includes(
+      ['Repository', 'Default branch', 'Content branch', 'Media folder', 'Media URL prefix', 'Cache status'].includes(
         key
       ) &&
       value &&
@@ -3278,6 +3306,26 @@ const DiagnosticsUtils = (() => {
     );
   }
 
+
+  function diagnosticsTextSections(sections = [], warnings = []) {
+    const body = sections
+      .map(section => {
+        const rows = Object.entries(section.data || {})
+          .map(([key, value]) => `${key}: ${value}`)
+          .join('\n');
+        return `${section.title}\n${'-'.repeat(section.title.length)}\n${rows}`;
+      })
+      .join('\n\n');
+
+    if (!warnings.length) return body;
+
+    return (
+      body +
+      '\n\nValidation warnings:\n' +
+      warnings.map(warning => `- ${warning.kind}: ${warning.msg}`).join('\n')
+    );
+  }
+
   function diagnosticsWorkflowNote({ workBranch, defaultBranch, mediaDir, mediaPrefix }) {
     return {
       workBranch: workBranch || 'content',
@@ -3291,6 +3339,7 @@ const DiagnosticsUtils = (() => {
     diagnosticsStatusClass,
     diagnosticsRows,
     diagnosticsText,
+    diagnosticsTextSections,
     diagnosticsWorkflowNote
   });
 })();
@@ -3445,6 +3494,8 @@ async function doPublish(){
 }
 
 /* ---------- diagnostics ---------- */
+let lastDiagnosticsCacheData=null;
+
 function diagnosticsData(){
   const dirty=Store.dirtyFragments();
   const active=state.activeId ? state.frags.get(state.activeId) : null;
@@ -3485,27 +3536,139 @@ function diagnosticsData(){
   };
 }
 
+function shortSha(sha){
+  return sha && sha !== 'none' && sha !== 'not loaded' ? `${sha.slice(0,7)}…${sha.slice(-7)}` : sha;
+}
 
-function renderDiagnostics(){
+function refShaForDiagnostics(ref){
+  return ref && ref.object && ref.object.sha ? ref.object.sha : '';
+}
+
+async function diagnosticsCacheData(){
+  const cachedDefault=LastWriteCommitCache.get(state.defaultBranch) || '';
+  const cachedContent=LastWriteCommitCache.get(state.workBranch) || '';
+  const loaded=state.contentTree || null;
+
+  const data={
+    "Cache status": "not connected",
+    "Default branch ref SHA": "not loaded",
+    "Content branch ref SHA": "not loaded",
+    "Cached default branch SHA": cachedDefault || "none",
+    "Cached content branch SHA": cachedContent || "none",
+    "Loaded content commit SHA": loaded ? loaded.commitSha : "not loaded",
+    "Loaded content source": loaded ? (loaded.source || "unknown") : "not loaded",
+    "Loaded content tree SHA": loaded ? loaded.treeSha : "not loaded",
+    "Cache validation": "not run",
+    "Cache decision": "not loaded"
+  };
+
+  if(!state.owner || !state.repo || !state.token){
+    data["Cache decision"]="connect to a repository first";
+    return data;
+  }
+
+  try{
+    const [defaultRef,contentRef]=await Promise.all([
+      GitHubApi.getRef(state.defaultBranch),
+      GitHubApi.getRef(state.workBranch)
+    ]);
+
+    const defaultSha=refShaForDiagnostics(defaultRef);
+    const contentSha=refShaForDiagnostics(contentRef);
+
+    data["Default branch ref SHA"]=defaultSha || "unavailable";
+    data["Content branch ref SHA"]=contentSha || "unavailable";
+
+    if(loaded && loaded.commitSha===contentSha){
+      data["Cache status"]="ok — loaded content matches branch ref";
+      data["Cache decision"]="branch ref";
+    }else if(loaded && cachedContent && loaded.commitSha===cachedContent){
+      data["Cache status"]="ok — loaded from validated cached write";
+      data["Cache decision"]="cached write";
+    }else if(loaded && contentSha && loaded.commitSha!==contentSha){
+      data["Cache status"]="warning — loaded content differs from branch ref";
+      data["Cache decision"]="loaded SHA does not match current refs/heads/content";
+    }else{
+      data["Cache status"]="ok — no loaded content mismatch detected";
+      data["Cache decision"]="branch ref";
+    }
+
+    if(cachedContent && contentSha && cachedContent!==contentSha){
+      try{
+        const cmp=await GitHubApi.compare(contentSha,cachedContent);
+        const ahead=typeof cmp.ahead_by==='number' ? cmp.ahead_by : 'unknown';
+        const behind=typeof cmp.behind_by==='number' ? cmp.behind_by : 'unknown';
+        data["Cache validation"]=`cached vs branch: ahead ${ahead}, behind ${behind}`;
+        if(ahead===0){
+          data["Cache status"]="warning — cached content SHA differs but is not ahead";
+        }
+      }catch(e){
+        data["Cache validation"]=`compare failed: ${e.message||e}`;
+        data["Cache status"]="warning — cache validation failed";
+      }
+    }else if(cachedContent && contentSha && cachedContent===contentSha){
+      data["Cache validation"]="cached content SHA equals branch ref";
+    }else if(!cachedContent){
+      data["Cache validation"]="no cached content SHA";
+    }
+
+    // Compact helper values make screenshots easier to read while full values
+    // remain available above and in Copy diagnostics.
+    data["Default branch short SHA"]=shortSha(defaultSha || "none");
+    data["Content branch short SHA"]=shortSha(contentSha || "none");
+    data["Cached content short SHA"]=shortSha(cachedContent || "none");
+    data["Loaded content short SHA"]=shortSha(loaded ? loaded.commitSha : "not loaded");
+
+    return data;
+  }catch(e){
+    data["Cache status"]="warning — branch ref fetch failed";
+    data["Cache validation"]=e.message || String(e);
+    data["Cache decision"]="could not verify branch refs";
+    return data;
+  }
+}
+
+function appendDiagnosticsSection(grid,title){
+  const heading=document.createElement('div');
+  heading.className='diag-section';
+  heading.textContent=title;
+  grid.appendChild(heading);
+}
+
+function appendDiagnosticsRows(grid,data){
+  for(const row of DiagnosticsUtils.diagnosticsRows(data)){
+    const k=document.createElement('div');
+    k.className='diag-key';
+    k.textContent=row.key;
+
+    const v=document.createElement('div');
+    v.className='diag-val '+row.statusClass;
+    v.title=row.value;
+    v.textContent=row.value;
+
+    grid.appendChild(k);
+    grid.appendChild(v);
+  }
+}
+
+async function renderDiagnostics(){
   const grid=el('diagnosticsGrid');
   grid.innerHTML='';
 
   try{
-    const data=diagnosticsData();
+    appendDiagnosticsSection(grid,'Runtime');
+    appendDiagnosticsRows(grid,diagnosticsData());
 
-    for(const row of DiagnosticsUtils.diagnosticsRows(data)){
-      const k=document.createElement('div');
-      k.className='diag-key';
-      k.textContent=row.key;
+    appendDiagnosticsSection(grid,'Cache / content source');
+    appendDiagnosticsRows(grid,{"Cache status":"loading…"});
+    const cache=await diagnosticsCacheData();
+    lastDiagnosticsCacheData=cache;
 
-      const v=document.createElement('div');
-      v.className='diag-val '+row.statusClass;
-      v.title=row.value;
-      v.textContent=row.value;
-
-      grid.appendChild(k);
-      grid.appendChild(v);
-    }
+    grid.innerHTML='';
+    appendDiagnosticsSection(grid,'Runtime');
+    appendDiagnosticsRows(grid,diagnosticsData());
+    appendDiagnosticsSection(grid,'Cache / content source');
+    appendDiagnosticsRows(grid,cache);
 
     const note=DiagnosticsUtils.diagnosticsWorkflowNote({
       workBranch:state.workBranch,
@@ -3536,16 +3699,22 @@ function openDiagnostics(){
   renderDiagnostics();
 }
 
-function diagnosticsText(){
+async function diagnosticsText(){
   try{
-    return DiagnosticsUtils.diagnosticsText(diagnosticsData(),allValidationWarnings());
+    const runtime=diagnosticsData();
+    const cache=await diagnosticsCacheData();
+    lastDiagnosticsCacheData=cache;
+    return DiagnosticsUtils.diagnosticsTextSections([
+      {title:'Runtime',data:runtime},
+      {title:'Cache / content source',data:cache}
+    ],allValidationWarnings());
   }catch(e){
     return 'Diagnostics failed: '+(e.message||e);
   }
 }
 
 async function copyDiagnostics(){
-  const text=diagnosticsText();
+  const text=await diagnosticsText();
   try{
     await navigator.clipboard.writeText(text);
     toast('Diagnostics copied','ok');
@@ -3627,8 +3796,8 @@ async function openLiveSite(){
 el('diagnosticsBtn').onclick=openDiagnostics;
 el('diagnosticsClose').onclick=()=>el('diagnosticsModal').classList.remove('show');
 el('diagnosticsCloseTop').onclick=()=>el('diagnosticsModal').classList.remove('show');
-el('diagnosticsRefresh').onclick=renderDiagnostics;
-el('diagnosticsCopy').onclick=copyDiagnostics;
+el('diagnosticsRefresh').onclick=()=>renderDiagnostics();
+el('diagnosticsCopy').onclick=()=>copyDiagnostics();
 
 el('openContentBtn').onclick=openContentBranch;
 el('openLiveBtn').onclick=openLiveSite;

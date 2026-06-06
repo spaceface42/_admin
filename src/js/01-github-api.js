@@ -84,29 +84,55 @@ const GitHubApi = Object.freeze({
   getBlob(sha){
     return this.request(this.repoPath(GitHubApiUtils.blobPath(sha)));
   },
+  async resolveBranchCommitForRead(branch,{preferLastWrite=true}={}){
+    const ref=await this.getRef(branch);
+    const branchSha=ref && ref.object ? ref.object.sha : '';
+
+    if(!branchSha) throw new Error(`Could not resolve ${branch} branch SHA.`);
+
+    const cachedSha=preferLastWrite && branch===state.workBranch
+      ? LastWriteCommitCache.get(branch)
+      : '';
+
+    if(!cachedSha || cachedSha===branchSha){
+      return {
+        commitSha:branchSha,
+        source:cachedSha ? 'branch ref + cached write' : 'branch ref'
+      };
+    }
+
+    // The local write cache exists to avoid GitHub branch-ref lag immediately
+    // after Save → content. But if the real content branch moved on later, that
+    // cached SHA becomes stale and must not override the branch.
+    //
+    // Compare branchSha...cachedSha:
+    // - ahead_by > 0 means cachedSha contains commits not visible at branchSha,
+    //   so the cache is newer and should be used.
+    // - ahead_by === 0, behind, or compare failure means branch ref wins.
+    try{
+      const cmp=await this.compare(branchSha,cachedSha);
+      if(cmp && typeof cmp.ahead_by==='number' && cmp.ahead_by>0){
+        return {commitSha:cachedSha,source:'last successful write'};
+      }
+    }catch(e){
+      console.warn('Could not validate cached content SHA; using branch ref',e);
+    }
+
+    LastWriteCommitCache.clear(branch);
+    return {commitSha:branchSha,source:'branch ref'};
+  },
+
   async getBranchTreeSnapshot(branch,{force=false,preferLastWrite=true}={}){
     if(!force && state.contentTree && state.contentTree.branch===branch){
       return state.contentTree;
     }
 
-    // Critical freshness fix:
-    // If this browser just saved to the content branch, GitHub returned the
-    // exact new commit SHA. Use that SHA for subsequent refresh/login reads
-    // instead of asking GitHub's branch/ref endpoints, which can briefly lag.
-    const chosen=ContentSourceUtils.choosePinnedCommit({
-      branch,
-      workBranch:state.workBranch,
-      preferLastWrite,
-      cachedSha:LastWriteCommitCache.get(branch)
-    });
-    let commitSha=chosen.commitSha;
-    let source=chosen.source;
-
-    if(!commitSha){
-      const ref=await this.getRef(branch);
-      commitSha=ref.object.sha;
-      source='branch ref';
-    }
+    // Resolve content source carefully:
+    // Prefer a pinned write SHA only if it is validated as newer than the
+    // current branch ref. Otherwise a stale browser cache could load old content.
+    const resolved=await this.resolveBranchCommitForRead(branch,{preferLastWrite});
+    const commitSha=resolved.commitSha;
+    const source=resolved.source;
 
     const commit=await this.getGitCommit(commitSha);
     const treeSha=commit.tree.sha;
