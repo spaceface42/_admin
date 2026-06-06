@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitCMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="login-card">
+    <div class="brand">
+      <svg class="hex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2l8.66 5v10L12 22l-8.66-5V7z" stroke-linejoin="round"/>
+      </svg>
+      <h1>GitCMS</h1>
+    </div>
+    <p class="sub">Zero-backend CMS. Edits HTML fragments directly via the GitHub API.</p>
+    <div class="login-err" id="loginErr"></div>
+    <div class="field">
+      <label>Site Repository URL</label>
+      <input id="repoUrl" placeholder="https://github.com/user/repo-site" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label>GitHub Personal Access Token</label>
+      <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
+      <div class="hint">Use a <b>fine-grained PAT</b> scoped to just this repo with <b>Contents: Read &amp; write</b>. A classic <span class="mono">repo</span>-scoped token works but can write to <i>every</i> repo you own. Stored in localStorage (base64 — obfuscation, not encryption).</div>
+    </div>
+    <button class="btn" id="connectBtn">Connect</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="logo">
+      <svg class="hex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)">
+        <path d="M12 2l8.66 5v10L12 22l-8.66-5V7z" stroke-linejoin="round"/>
+      </svg>
+      GitCMS
+    </div>
+    <span class="badge" id="repoBadge"><span class="dot"></span><span id="repoBadgeTxt"></span></span>
+    <span class="badge branch"><span class="dot"></span><span id="workBranchBadge">content</span></span>
+    <button class="tbtn ghost" id="openContentBtn" title="Open the content branch on GitHub">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7"/><path d="M10 14L21 3"/><path d="M21 14v5a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h5"/></svg>
+      GitHub Content
+    </button>
+    <button class="tbtn ghost" id="openLiveBtn" title="Open the live GitHub Pages site">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 010 20"/><path d="M12 2a15.3 15.3 0 000 20"/></svg>
+      Live Site
+    </button>
+
+    <div class="spacer"></div>
+    <span class="status-txt" id="statusTxt"></span>
+    <button class="tbtn ghost" id="refreshBtn" title="Reload from GitHub">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+    </button>
+    <button class="tbtn ghost" id="settingsBtn" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      Settings
+    </button>
+    <button class="tbtn ghost" id="diagnosticsBtn" title="Show CMS diagnostics">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M21 12a9 9 0 11-9-9"/><path d="M21 3v6h-6"/></svg>
+      Diagnostics
+    </button>
+    <button class="tbtn" id="mediaBtn" title="Open media library">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      Media
+    </button>
+    <button class="tbtn pub" id="publishBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+      Publish to <span id="publishTargetTxt">main</span>
+    </button>
+    <button class="tbtn" id="disconnectBtn">Disconnect</button>
+  </div>
+
+  <div class="banner" id="banner">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+    <span>No <span class="mono">fragments.json</span> found — loaded via full tree scan. Save a manifest for faster loads.</span>
+    <button id="saveManifestBtn">Save manifest</button>
+  </div>
+
+  <div class="banner info" id="divergeBanner">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM15 6a9 9 0 01-9 9"/></svg>
+    <span id="divergeMsg"></span>
+    <button id="resetDraftBtn">Reset content from main</button>
+  </div>
+
+  <div class="main">
+    <aside class="sidebar">
+      <div class="side-head">
+        <h2>Fragments</h2>
+        <button class="icon-btn" id="sideRefresh" title="Reload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        </button>
+      </div>
+      <div class="tree" id="tree"></div>
+    </aside>
+
+    <section class="editor">
+      <div class="empty" id="emptyState">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        <p>Select a fragment to edit</p>
+      </div>
+
+      <div id="editorPane" style="display:none;flex:1;flex-direction:column;min-height:0">
+        <div class="ed-head">
+          <span class="meta-badge"><b id="edId"></b></span>
+          <span class="meta-badge mono" id="edFile"></span>
+          <input class="label-input" id="edLabel" placeholder="Fragment label">
+          <div class="ed-actions">
+            <button class="tbtn ghost" id="resetBtn">Reset</button>
+            <button class="tbtn pub" id="saveBtn">Save → Content</button>
+          </div>
+        </div>
+        <div class="ed-body">
+          <div class="pane code">
+            <div class="pane-head">
+              <div class="snippet-bar">
+                <span>Inner HTML</span>
+                <button class="snippet-btn" type="button" data-snippet="p">P</button>
+                <button class="snippet-btn" type="button" data-snippet="h2">H2</button>
+                <button class="snippet-btn" type="button" data-snippet="lede">Lede</button>
+                <button class="snippet-btn" type="button" data-snippet="button">Button</button>
+                <button class="snippet-btn" type="button" data-snippet="list">List</button>
+                <button class="snippet-btn" type="button" data-snippet="card">Card</button>
+              </div>
+              <span class="wrapinfo" id="wrapInfo"></span>
+            </div>
+            <textarea id="htmlArea" spellcheck="false"></textarea>
+          </div>
+          <div class="pane">
+            <div class="pane-head">
+              <span>Live Preview</span>
+              <div class="preview-mode">
+                <button id="previewFragmentBtn" type="button" class="active">Fragment</button>
+                <button id="previewPageBtn" type="button">Page</button>
+              </div>
+            </div>
+            <div class="preview-wrap"><iframe id="preview" title="Live preview" sandbox></iframe></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="statusbar">
+        <span id="sbMain">GitCMS</span>
+        <span id="sbCount"></span>
+        <span id="sbPath"></span>
+        <div class="spacer"></div>
+        <span class="unsaved" id="sbUnsaved"><span class="dot"></span>unsaved changes</span>
+      </div>
+    </section>
+  </div>
+</div>
+
+
+
+<!-- DIAGNOSTICS MODAL -->
+<div class="modal-bg" id="diagnosticsModal">
+  <div class="modal diagnostics-modal">
+    <div class="diag-head">
+      <div>
+        <h3>Diagnostics</h3>
+        <p class="mdesc">Current GitCMS runtime state. Useful for checking branch, path, and media configuration.</p>
+      </div>
+      <button class="icon-btn" id="diagnosticsCloseTop" title="Close diagnostics">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="diag-scroll">
+      <div class="diag-grid" id="diagnosticsGrid"></div>
+      <div class="diag-note" id="diagnosticsNote"></div>
+      <div class="validation-box" id="validationBox"></div>
+      <div class="modal-err" id="diagnosticsErr"></div>
+    </div>
+
+    <div class="modal-row diag-actions">
+      <button class="tbtn ghost" id="diagnosticsRefresh">Refresh</button>
+      <button class="tbtn ghost" id="diagnosticsCopy">Copy</button>
+      <button class="tbtn pub" id="diagnosticsClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-bg" id="settingsModal">
+  <div class="modal">
+    <h3>Settings</h3>
+    <p class="mdesc">Saved to <span class="mono">gitcms.config.json</span> on the <span id="settingsWorkBranchNote" class="mono">content</span> branch.</p>
+    <div class="field">
+      <label>Work branch <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--txt3)">— edit <span class="mono">gitcms.config.json</span> directly to change</span></label>
+      <div id="cfgWorkBranch" class="mono" style="padding:10px 13px;background:var(--bg);border:1px solid var(--line);border-radius:6px;font-size:13px;color:var(--txt2)">content</div>
+    </div>
+    <div class="field">
+      <label>Manifest path</label>
+      <input id="cfgManifestPath" class="mono" placeholder="fragments.json" spellcheck="false" autocomplete="off">
+      <div class="hint">Path to the <span class="mono">fragments.json</span> manifest in the repo root.</div>
+    </div>
+    <div class="field">
+      <label>Media folder <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--txt3)">— repo path</span></label>
+      <input id="cfgMediaDir" class="mono" placeholder="docs/assets/media" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Media URL prefix <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--txt3)">— inserted into &lt;img src&gt;</span></label>
+      <input id="cfgMediaPrefix" class="mono" placeholder="assets/media/" spellcheck="false" autocomplete="off">
+      <div class="hint">If your site deploys from <span class="mono">docs/</span>, use repo folder <span class="mono">docs/assets/media</span> and prefix <span class="mono">assets/media/</span>. Supports <span class="mono">{path}</span> and <span class="mono">{file}</span> placeholders.</div>
+    </div>
+    <div class="field">
+      <label>Preview CSS <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--txt3)">— comma-separated public paths</span></label>
+      <input id="cfgPreviewCss" class="mono" placeholder="assets/style.css" spellcheck="false" autocomplete="off">
+      <div class="hint">Optional. Loads CSS into the sandboxed preview iframe from the <span class="mono">content</span> branch. Use public paths like <span class="mono">assets/style.css</span>.</div>
+    </div>
+    <div class="modal-err" id="settingsErr"></div>
+    <div class="modal-row">
+      <button class="tbtn ghost" id="settingsClose">Close</button>
+      <button class="tbtn pub" id="settingsSave">Save config</button>
+    </div>
+  </div>
+</div>
+
+<!-- MEDIA MODAL -->
+<div class="modal-bg" id="mediaModal">
+  <div class="modal media-modal">
+    <h3>Media library</h3>
+    <p class="mdesc">Upload images to the <span id="mediaBranchNote" class="mono">content</span> branch, browse thumbnails, then click a thumbnail to insert an <span class="mono">&lt;img&gt;</span> tag at the editor cursor.</p>
+    <div class="media-note" id="mediaDirNote"></div>
+    <div class="media-upload">
+      <input id="mediaUpload" type="file" accept="image/*" multiple>
+      <button class="tbtn" id="mediaRefreshBtn">Refresh</button>
+    </div>
+    <div class="modal-err" id="mediaErr"></div>
+    <div class="modal-warn" id="mediaWarn"></div>
+    <div class="media-grid" id="mediaGrid"><div class="media-empty">Open the media library to load images.</div></div>
+    <div class="modal-row">
+      <button class="tbtn ghost" id="mediaClose">Close</button>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- DELETE MEDIA MODAL -->
+<div class="modal-bg" id="deleteMediaModal">
+  <div class="modal">
+    <h3>Delete media</h3>
+    <p class="mdesc">Delete this image from the <b id="deleteBranchName">content</b> branch. The live site changes only after publishing.</p>
+    <div class="delete-target" id="deleteMediaTarget"></div>
+    <div class="delete-usage" id="deleteMediaUsage"></div>
+    <div class="modal-warn show">This only deletes the file. It does not remove existing <span class="mono">&lt;img&gt;</span> references from your fragments.</div>
+    <div class="modal-err" id="deleteMediaErr"></div>
+    <div class="modal-row">
+      <button class="tbtn ghost" id="deleteMediaCancel">Cancel</button>
+      <button class="tbtn pub" id="deleteMediaConfirm" style="background:var(--red);border-color:var(--red);color:#1b0907">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ALT TEXT MODAL -->
+<div class="modal-bg" id="altModal">
+  <div class="modal">
+    <h3>Insert image</h3>
+    <p class="mdesc">Add useful alt text for accessibility, or mark the image as decorative.</p>
+    <div class="field">
+      <label>Image</label>
+      <div id="altImageName" class="mono" style="padding:10px 13px;background:var(--bg);border:1px solid var(--line);border-radius:6px;font-size:13px;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+    </div>
+    <div class="field">
+      <label>Alt text</label>
+      <input id="altTextInput" placeholder="Describe the image" autocomplete="off">
+      <div class="hint">Describe the content/purpose of the image. Leave empty only if the image is decorative.</div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;color:var(--txt2);font-size:13px;margin:-4px 0 18px">
+      <input id="altDecorative" type="checkbox" style="width:auto;margin:0">
+      Decorative image — use empty <span class="mono">alt=""</span>
+    </label>
+    <div class="modal-row">
+      <button class="tbtn ghost" id="altCancel">Cancel</button>
+      <button class="tbtn pub" id="altInsert">Insert image</button>
+    </div>
+  </div>
+</div>
+
+<!-- COMMIT MODAL -->
+<div class="modal-bg" id="commitModal">
+  <div class="modal">
+    <h3>Commit to content</h3>
+    <p class="mdesc" id="commitDesc">Saving changes to the <b>content</b> branch.</p>
+    <input id="commitMsg" placeholder="commit message">
+    <div class="modal-err" id="commitErr"></div>
+    <div class="modal-row">
+      <button class="tbtn ghost" id="commitCancel">Cancel</button>
+      <button class="tbtn pub" id="commitConfirm">Commit</button>
+    </div>
+  </div>
+</div>
+
+<!-- PUBLISH MODAL -->
+<div class="modal-bg" id="pubModal">
+  <div class="modal">
+    <h3>Publish to main</h3>
+    <p class="mdesc">Deploy <b>content</b> to <b>main</b>. The GitHub Action will deploy <span class="mono">docs/</span> to Pages.</p>
+    <div class="modal-warn" id="pubWarn"></div>
+    <div class="publish-summary" id="pubSummary"><div class="publish-empty">Open publish to load changed files.</div></div>
+    <div class="modal-err" id="pubErr"></div>
+    <div class="modal-row">
+      <button class="tbtn ghost" id="pubCancel">Cancel</button>
+      <button class="tbtn pub" id="pubConfirm">Publish</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"><span class="tdot"></span><span id="toastTxt"></span></div>
+
+<script src="./admin.js" defer></script>
+</body>
+</html>

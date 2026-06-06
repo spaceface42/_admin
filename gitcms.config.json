@@ -1,0 +1,13 @@
+{
+  "workBranch": "content",
+  "media": {
+    "dir": "docs/assets/media",
+    "publicPrefix": "assets/media/"
+  },
+  "preview": {
+    "css": [
+      "assets/style.css"
+    ]
+  },
+  "manifestPath": "fragments.json"
+}

@@ -1,0 +1,19 @@
+{
+  "name": "gitcms-admin",
+  "version": "1.1.28-release-hardening",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build-admin.mjs",
+    "check": "node --check src/admin.js",
+    "test": "node --test",
+    "lint": "eslint src/js/**/*.js src/lib/**/*.mjs tests/**/*.mjs build-admin.mjs",
+    "format": "prettier --write src/**/*.js src/**/*.mjs src/**/*.css src/**/*.html tests/**/*.mjs *.md",
+    "format:check": "prettier --check src/**/*.js src/**/*.mjs src/**/*.css src/**/*.html tests/**/*.mjs *.md",
+    "quality": "npm run build && npm run check && npm test"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0"
+  }
+}
