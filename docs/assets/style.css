@@ -1,0 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Syne:wght@400;600;700;800&display=swap');
+
+:root {
+  --bg: #f6f1e8;
+  --text: #181511;
+  --muted: #6f665d;
+  --line: #ded4c5;
+  --accent: #222;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Syne, system-ui, sans-serif;
+  line-height: 1.55;
+}
+
+.site-nav {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 28px 22px;
+  display: flex;
+  gap: 22px;
+  align-items: center;
+}
+
+.logo {
+  font-weight: 800;
+  margin-right: auto;
+}
+
+a {
+  color: inherit;
+}
+
+.wrap {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 40px 22px 80px;
+}
+
+section {
+  margin: 0 0 58px;
+}
+
+h1, h2, h3 {
+  font-family: Fraunces, Georgia, serif;
+  line-height: 1.05;
+}
+
+h1 {
+  font-size: clamp(3rem, 8vw, 7rem);
+  margin: 0 0 20px;
+}
+
+h2 {
+  font-size: clamp(2rem, 4vw, 3.8rem);
+  margin: 0 0 18px;
+}
+
+.lede {
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  color: var(--muted);
+  max-width: 760px;
+}
+
+.grid, .team {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.card, .member, .contact-form, .map-embed {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 22px;
+  background: rgba(255,255,255,.42);
+}
+
+.btn {
+  display: inline-block;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 16px;
+  margin: 10px 0;
+}
+
+.site-foot {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 28px 22px;
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
