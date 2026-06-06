@@ -13,7 +13,7 @@ async function loadGitCMSConfig(force=false,refs=null){
   const refsToTry=refs||[state.workBranch,state.defaultBranch];
   for(const ref of refsToTry){
     try{
-      const r=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(CONFIG_PATH)}?ref=${encodeURIComponent(ref)}`);
+      const r=await GitHubApi.getFile(CONFIG_PATH,ref);
       let parsed=null;
       try{
         parsed=JSON.parse(dec(r.content));
@@ -95,18 +95,15 @@ async function saveConfig(){
 
     let sha=null;
     try{
-      const cur=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(CONFIG_PATH)}?ref=${encodeURIComponent(state.workBranch)}`);
+      const cur=await GitHubApi.getFile(CONFIG_PATH,state.workBranch);
       sha=cur.sha;
     }catch(e){ if(e.status!==404) throw e; }
 
-    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(CONFIG_PATH)}`,{
-      method:'PUT',
-      body:{
-        message:'cms: update GitCMS config',
-        content:enc(JSON.stringify(next,null,2)+'\n'),
-        branch:state.workBranch,
-        ...(sha?{sha}:{})
-      }
+    await GitHubApi.saveFile(CONFIG_PATH,{
+      message:'cms: update GitCMS config',
+      content:enc(JSON.stringify(next,null,2)+'\n'),
+      branch:state.workBranch,
+      sha
     });
 
     const manifestChanged=newManifestPath!==state.manifestPath;
@@ -174,7 +171,7 @@ async function loadMedia(silent=false){
   if(!silent) setMediaGridEmpty('Loading images…');
 
   try{
-    const items=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(dir)}?ref=${encodeURIComponent(state.workBranch)}`);
+    const items=await GitHubApi.listContent(dir,state.workBranch);
     const images=(Array.isArray(items)?items:[]).filter(i=>i.type==='file'&&IMAGE_RE.test(i.name));
     const now=Date.now();
     const seen=new Set(images.map(i=>i.path));
@@ -260,7 +257,7 @@ async function loadMediaThumb(item,slot,attempt=0){
       slot.textContent='large file';
       return;
     }
-    const r=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(item.path)}?ref=${encodeURIComponent(state.workBranch)}&v=${encodeURIComponent(item.sha||Date.now())}`);
+    const r=await GitHubApi.getFile(item.path,state.workBranch);
     const img=document.createElement('img');
     img.className='media-thumb';
     img.alt=item.name;
@@ -389,17 +386,14 @@ async function confirmDeleteMedia(){
   try{
     let sha=item.sha || null;
     if(!sha){
-      const cur=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}?ref=${encodeURIComponent(state.workBranch)}`);
+      const cur=await GitHubApi.getFile(path,state.workBranch);
       sha=cur.sha;
     }
 
-    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}`,{
-      method:'DELETE',
-      body:{
-        message:'cms: delete media '+name,
-        sha,
-        branch:state.workBranch
-      }
+    await GitHubApi.deleteFile(path,{
+      message:'cms: delete media '+name,
+      sha,
+      branch:state.workBranch
     });
 
     const pending=pendingMediaPreviews.get(path);
@@ -457,7 +451,7 @@ function readFileBase64(file){
 
 async function mediaPathExists(path){
   try{
-    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}?ref=${encodeURIComponent(state.workBranch)}`);
+    await GitHubApi.getFile(path,state.workBranch);
     return true;
   }catch(e){
     if(e.status===404) return false;
@@ -518,10 +512,7 @@ async function uploadMediaFiles(){
       pendingMediaPreviews.set(path,pending);
 
       const content=await readFileBase64(file);
-      const put=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}`,{
-        method:'PUT',
-        body:{message:'cms: upload media '+name,content,branch:state.workBranch}
-      });
+      const put=await GitHubApi.saveFile(path,{message:'cms: upload media '+name,content,branch:state.workBranch});
       pending.sha=put && put.content ? put.content.sha : null;
       uploaded.push(pending);
     }

@@ -21,17 +21,13 @@ el('resetDraftBtn').onclick=async()=>{
      `Any unpublished commits on ${state.workBranch} will be lost.`)) return;
   const btn=el('resetDraftBtn'); btn.disabled=true; btn.textContent='Resetting…';
   try{
-    const ref=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/ref/heads/${state.defaultBranch}`);
+    const ref=await GitHubApi.getRef(state.defaultBranch);
     const sha=ref.object.sha;
     try{
-      await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/refs/heads/${state.workBranch}`,{
-        method:'PATCH', body:{sha,force:true}
-      });
+      await GitHubApi.updateRef(state.workBranch,sha,{force:true});
     }catch(e){
       if(e.status===404 || e.status===422){
-        await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/refs`,{
-          method:'POST', body:{ref:`refs/heads/${state.workBranch}`,sha}
-        });
+        await GitHubApi.createBranchFromSha(state.workBranch,sha);
       }else throw e;
     }
     el('divergeBanner').classList.remove('show');

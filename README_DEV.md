@@ -102,3 +102,31 @@ npm run build
 ```
 
 Important: behavior remains intentionally unchanged. This is still the stable v1.1 feature set.
+
+
+## Refactor pass 4
+
+This pass completes the first GitHub API cleanup target:
+
+- added richer named `GitHubApi` methods
+- replaced raw endpoint calls outside `src/js/00-core.js`
+- kept `gh()` only as a compatibility wrapper
+- preserved behavior
+- rebuilt `admin.html`
+- tests still pass
+
+Rule after this pass:
+
+```txt
+Do not construct `/repos/...` endpoint strings outside GitHubApi.
+```
+
+Prefer:
+
+```js
+GitHubApi.getFile(path, ref)
+GitHubApi.saveFile(path, body)
+GitHubApi.deleteFile(path, body)
+GitHubApi.merge(base, head, message)
+GitHubApi.compare(base, head)
+```

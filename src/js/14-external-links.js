@@ -18,7 +18,7 @@ async function liveSiteUrl(){
   // Prefer GitHub Pages API because custom domains and non-standard Pages settings
   // can exist. If it fails, fall back to the standard project Pages URL.
   try{
-    const pages=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/pages`);
+    const pages=await GitHubApi.getPagesInfo();
     if(pages && pages.html_url) return pages.html_url.replace(/\/?$/,'/');
   }catch(e){
     // 404/403 means Pages endpoint is unavailable or token lacks permission.

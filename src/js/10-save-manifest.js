@@ -4,18 +4,15 @@ el('saveManifestBtn').onclick=async()=>{
   try{
     let sha=null;
     try{
-      const cur=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(state.manifestPath)}?ref=${encodeURIComponent(state.workBranch)}`);
+      const cur=await GitHubApi.getFile(state.manifestPath,state.workBranch);
       sha=cur.sha;
     }catch(e){ if(e.status!==404) throw e; }
 
-    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(state.manifestPath)}`,{
-      method:'PUT',
-      body:{
-        message:'cms: save '+state.manifestPath,
-        content:enc(JSON.stringify(man,null,2)+'\n'),
-        branch:state.workBranch,
-        ...(sha?{sha}:{})
-      }
+    await GitHubApi.saveFile(state.manifestPath,{
+      message:'cms: save '+state.manifestPath,
+      content:enc(JSON.stringify(man,null,2)+'\n'),
+      branch:state.workBranch,
+      sha
     });
     state.manifest=man;
     el('banner').classList.remove('show');

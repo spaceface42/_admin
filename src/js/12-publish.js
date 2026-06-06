@@ -5,10 +5,7 @@ el('pubConfirm').onclick=doPublish;
 
 async function syncWorkBranchFromMain(){
   try{
-    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/merges`,{
-      method:'POST',
-      body:{base:state.workBranch,head:state.defaultBranch,commit_message:'cms: sync '+state.defaultBranch+' → '+state.workBranch}
-    });
+    await GitHubApi.merge(state.workBranch,state.defaultBranch,'cms: sync '+state.defaultBranch+' → '+state.workBranch);
   }catch(e){
     if(e.status===409) e.phase='sync-main-into-work';
     throw e;
@@ -21,10 +18,7 @@ async function doPublish(){
   try{
     await syncWorkBranchFromMain();
     btn.textContent='Publishing…';
-    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/merges`,{
-      method:'POST',
-      body:{base:state.defaultBranch,head:state.workBranch,commit_message:'cms: publish '+state.workBranch+' → '+state.defaultBranch}
-    });
+    await GitHubApi.merge(state.defaultBranch,state.workBranch,'cms: publish '+state.workBranch+' → '+state.defaultBranch);
     el('pubModal').classList.remove('show');
     toast('Published — GitHub Action will deploy shortly','ok');
     await loadAll();

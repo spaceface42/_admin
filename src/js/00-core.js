@@ -188,14 +188,35 @@ const GitHubApi = Object.freeze({
       body:{ref:`refs/heads/${branch}`,sha}
     });
   },
+  createBranchFromSha(branch,sha){
+    return this.createRef(branch,sha);
+  },
+  updateRef(branch,sha,{force=false}={}){
+    return this.request(this.repoPath(`/git/refs/heads/${encodeURIComponent(branch)}`),{
+      method:'PATCH',
+      body:{sha,force}
+    });
+  },
   getContent(path,ref){
     return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}?ref=${encodeURIComponent(ref)}`));
+  },
+  getFile(path,ref){
+    return this.getContent(path,ref);
+  },
+  listContent(path,ref){
+    return this.getContent(path,ref);
   },
   putContent(path,body){
     return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}`),{method:'PUT',body});
   },
+  saveFile(path,{message,content,branch,sha}){
+    return this.putContent(path,{message,content,branch,...(sha?{sha}:{})});
+  },
   deleteContent(path,body){
     return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}`),{method:'DELETE',body});
+  },
+  deleteFile(path,{message,sha,branch}){
+    return this.deleteContent(path,{message,sha,branch});
   },
   merge(base,head,commit_message){
     return this.request(this.repoPath('/merges'),{method:'POST',body:{base,head,commit_message}});
@@ -206,8 +227,14 @@ const GitHubApi = Object.freeze({
   tree(ref){
     return this.request(this.repoPath(`/git/trees/${encodeURIComponent(ref)}?recursive=1`));
   },
+  getRecursiveTree(ref){
+    return this.tree(ref);
+  },
   pages(){
     return this.request(this.repoPath('/pages'));
+  },
+  getPagesInfo(){
+    return this.pages();
   }
 });
 

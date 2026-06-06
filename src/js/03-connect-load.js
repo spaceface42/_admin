@@ -11,7 +11,7 @@ async function connect(){
 
   try{
     // resolve default branch
-    const repoInfo=await GitHubApi.request(`/repos/${state.owner}/${state.repo}`);
+    const repoInfo=await GitHubApi.getRepo();
     Store.setDefaultBranch(repoInfo.default_branch||'main');
 
     // Load config from main FIRST so we know workBranch and manifestPath before
@@ -90,7 +90,7 @@ function showLoginErr(m){ const x=el('loginErr'); x.textContent=m; x.style.displ
 
 async function ensureWorkBranch(){
   try{
-    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/branches/${encodeURIComponent(state.workBranch)}`);
+    await GitHubApi.getBranch(state.workBranch);
     return;
   }catch(e){
     if(e.status!==404) throw e;
@@ -101,18 +101,15 @@ async function ensureWorkBranch(){
   let sourceBranch=state.defaultBranch;
   if(state.workBranch!==LEGACY_WORK_BRANCH){
     try{
-      await GitHubApi.request(`/repos/${state.owner}/${state.repo}/branches/${encodeURIComponent(LEGACY_WORK_BRANCH)}`);
+      await GitHubApi.getBranch(LEGACY_WORK_BRANCH);
       sourceBranch=LEGACY_WORK_BRANCH;
     }catch(e){
       if(e.status!==404) throw e;
     }
   }
 
-  const ref=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/ref/heads/${encodeURIComponent(sourceBranch)}`);
-  await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/refs`,{
-    method:'POST',
-    body:{ref:`refs/heads/${state.workBranch}`,sha:ref.object.sha}
-  });
+  const ref=await GitHubApi.getRef(sourceBranch);
+  await GitHubApi.createBranchFromSha(state.workBranch,ref.object.sha);
   toast(`Created ${state.workBranch} branch from ${sourceBranch}`,'ok');
 }
 
@@ -121,7 +118,7 @@ async function ensureWorkBranch(){
 async function loadManifest(){
   async function read(ref){
     try{
-      const r=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(state.manifestPath)}?ref=${encodeURIComponent(ref)}`);
+      const r=await GitHubApi.getFile(state.manifestPath,ref);
       let parsed=null;
       try{
         parsed=JSON.parse(dec(r.content));
@@ -143,7 +140,7 @@ async function fetchFile(path){
   // The default branch is only a fallback for initial/missing files.
   async function read(ref){
     try{
-      const r=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}?ref=${encodeURIComponent(ref)}`);
+      const r=await GitHubApi.getFile(path,ref);
       return {content:dec(r.content),sha:r.sha,ref};
     }catch(e){ if(e.status===404) return null; throw e; }
   }
@@ -257,7 +254,7 @@ async function tryTreeScan(){
   state.manifest=null;
 
   async function scanBranch(ref){
-    const tree=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
+    const tree=await GitHubApi.getRecursiveTree(ref);
     return tree.tree.filter(n=>n.type==='blob'&&/\.html?$/i.test(n.path)).map(n=>n.path);
   }
 
