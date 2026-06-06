@@ -11,6 +11,13 @@ function diagnosticsData(){
     "Repository": state.owner && state.repo ? `${state.owner}/${state.repo}` : "not connected",
     "Default branch": state.defaultBranch || "unknown",
     "Content branch": state.workBranch || "unknown",
+    "CMS source branch": state.workBranch || "unknown",
+    "Main fallback": "disabled",
+    "Content commit SHA": state.contentTree ? state.contentTree.commitSha : "not loaded",
+    "Content tree source": state.contentTree ? (state.contentTree.source || "unknown") : "not loaded",
+    "Pinned last write SHA": LastWriteCommitCache.get(state.workBranch) || "none",
+    "Content tree SHA": state.contentTree ? state.contentTree.treeSha : "not loaded",
+    "File read mode": "Git data API blob read",
     "Manifest path": state.manifestPath || DEFAULT_MANIFEST_PATH,
     "Manifest loaded": state.manifest ? "yes" : "no",
     "Config path": CONFIG_PATH,
@@ -43,46 +50,58 @@ function diagnosticsStatusClass(key,value){
 
 function renderDiagnostics(){
   const grid=el('diagnosticsGrid');
-  const data=diagnosticsData();
   grid.innerHTML='';
 
-  for(const [key,value] of Object.entries(data)){
-    const k=document.createElement('div');
-    k.className='diag-key';
-    k.textContent=key;
+  try{
+    const data=diagnosticsData();
 
-    const v=document.createElement('div');
-    v.className='diag-val '+diagnosticsStatusClass(key,value);
-    v.title=value;
-    v.textContent=value;
+    for(const [key,value] of Object.entries(data)){
+      const k=document.createElement('div');
+      k.className='diag-key';
+      k.textContent=key;
 
-    grid.appendChild(k);
-    grid.appendChild(v);
+      const v=document.createElement('div');
+      v.className='diag-val '+diagnosticsStatusClass(key,value);
+      v.title=String(value);
+      v.textContent=String(value);
+
+      grid.appendChild(k);
+      grid.appendChild(v);
+    }
+
+    el('diagnosticsNote').innerHTML =
+      `Expected workflow: <span class="mono">${esc(state.workBranch)}</span> is the CMS editing branch, `+
+      `<span class="mono">${esc(state.defaultBranch)}</span> is the live publish branch. `+
+      `Media should usually be saved under <span class="mono">${esc(mediaDir())}</span> and inserted as `+
+      `<span class="mono">${esc(mediaPrefix())}</span>.`;
+
+    renderValidationBox();
+
+    el('diagnosticsErr').classList.remove('show');
+    el('diagnosticsErr').textContent='';
+  }catch(e){
+    console.error('Diagnostics failed',e);
+    grid.innerHTML='';
+    el('diagnosticsErr').textContent='Diagnostics failed: '+(e.message||e);
+    el('diagnosticsErr').classList.add('show');
   }
-
-  el('diagnosticsNote').innerHTML =
-    `Expected workflow: <span class="mono">${esc(state.workBranch)}</span> is the CMS editing branch, `+
-    `<span class="mono">${esc(state.defaultBranch)}</span> is the live publish branch. `+
-    `Media should usually be saved under <span class="mono">${esc(mediaDir())}</span> and inserted as `+
-    `<span class="mono">${esc(mediaPrefix())}</span>.`;
-
-  renderValidationBox();
-
-  el('diagnosticsErr').classList.remove('show');
-  el('diagnosticsErr').textContent='';
 }
 
 function openDiagnostics(){
-  renderDiagnostics();
   el('diagnosticsModal').classList.add('show');
+  renderDiagnostics();
 }
 
 function diagnosticsText(){
-  const data=diagnosticsData();
-  const base=Object.entries(data).map(([k,v])=>`${k}: ${v}`).join('\n');
-  const warnings=allValidationWarnings();
-  if(!warnings.length) return base;
-  return base+'\n\nValidation warnings:\n'+warnings.map(w=>`- ${w.kind}: ${w.msg}`).join('\n');
+  try{
+    const data=diagnosticsData();
+    const base=Object.entries(data).map(([k,v])=>`${k}: ${v}`).join('\n');
+    const warnings=allValidationWarnings();
+    if(!warnings.length) return base;
+    return base+'\n\nValidation warnings:\n'+warnings.map(w=>`- ${w.kind}: ${w.msg}`).join('\n');
+  }catch(e){
+    return 'Diagnostics failed: '+(e.message||e);
+  }
 }
 
 async function copyDiagnostics(){

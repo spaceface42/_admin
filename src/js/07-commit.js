@@ -51,6 +51,7 @@ async function doCommit(){
           }
 
           put=await GitHubApi.saveFile(f.path,{ message:msg, content:enc(content), branch:state.workBranch, sha });
+    Store.clearContentTree();
 
           fileRec.content=content;
           fileRec.shaDraft=put.content.sha;
@@ -143,5 +144,6 @@ async function commitManifest(msg){
     sha=cur.sha;
   }catch(e){ if(e.status!==404) throw e; }
   await GitHubApi.saveFile(state.manifestPath,{message:msg+' (manifest)',content:enc(JSON.stringify(updated,null,2)+'\n'),branch:state.workBranch,sha});
+    Store.clearContentTree();
   state.manifest=updated;
 }

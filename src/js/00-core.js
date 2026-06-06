@@ -17,13 +17,13 @@
    their file, they do not carry their own copy of file content.
    ============================================================ */
 
-const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok';
+const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_write_commits';
 // TODO SECURITY:
 // During development, the GitHub token is stored in localStorage for convenience.
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.0';
+const GITCMS_VERSION='1.1.4-content-tree-pinned-write';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -40,6 +40,7 @@ const state = {
   manifestPath:'fragments.json',
   activeId:null,
   previewMode:'fragment',
+  contentTree:null,        // {branch, commitSha, treeSha, tree}
   validation:{config:[],manifest:[],markers:[],runtime:[]},
 };
 
@@ -57,6 +58,47 @@ function toast(msg,kind){
 }
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
+
+
+
+const LastWriteCommitCache = Object.freeze({
+  ttlMs: 30*60*1000,
+  readAll(){
+    try{return JSON.parse(localStorage.getItem(LS_LAST_WRITE)||'{}')||{};}catch(e){return {};}
+  },
+  writeAll(data){
+    try{localStorage.setItem(LS_LAST_WRITE,JSON.stringify(data));}catch(e){}
+  },
+  key(branch){
+    return `${state.owner}/${state.repo}:${branch}`;
+  },
+  set(branch,sha){
+    if(!branch || !sha) return;
+    const data=this.readAll();
+    data[this.key(branch)]={sha,t:Date.now()};
+    this.writeAll(data);
+  },
+  get(branch){
+    if(!branch) return '';
+    const item=this.readAll()[this.key(branch)];
+    if(!item || !item.sha) return '';
+    if(Date.now()-(item.t||0)>this.ttlMs) return '';
+    return item.sha;
+  },
+  clear(branch){
+    const data=this.readAll();
+    delete data[this.key(branch)];
+    this.writeAll(data);
+  },
+  clearRepo(){
+    const data=this.readAll();
+    const prefix=`${state.owner}/${state.repo}:`;
+    for(const key of Object.keys(data)){
+      if(key.startsWith(prefix)) delete data[key];
+    }
+    this.writeAll(data);
+  }
+});
 
 const Store = Object.freeze({
   setRepo(owner,repo,token){
@@ -77,6 +119,12 @@ const Store = Object.freeze({
     state.files.clear();
     state.frags.clear();
     state.activeId=null;
+  },
+  setContentTree(snapshot){
+    state.contentTree=snapshot;
+  },
+  clearContentTree(){
+    state.contentTree=null;
   },
   setManifest(manifest){
     state.manifest=manifest;
@@ -154,6 +202,9 @@ const GitHubApi = Object.freeze({
     return `/repos/${state.owner}/${state.repo}${path}`;
   },
   async request(path,{method='GET',body,raw=false}={}){
+    // Keep the request CORS-simple enough for local file:// usage.
+    // Content freshness is handled by the content-tree/blob read model,
+    // not by custom no-cache headers.
     const res=await fetch(API+path,{
       method,
       headers:{
@@ -182,7 +233,7 @@ const GitHubApi = Object.freeze({
   getRef(branch){
     return this.request(this.repoPath(`/git/ref/heads/${encodeURIComponent(branch)}`));
   },
-  createRef(branch,sha){
+  async createRef(branch,sha){
     return this.request(this.repoPath('/git/refs'),{
       method:'POST',
       body:{ref:`refs/heads/${branch}`,sha}
@@ -191,35 +242,126 @@ const GitHubApi = Object.freeze({
   createBranchFromSha(branch,sha){
     return this.createRef(branch,sha);
   },
-  updateRef(branch,sha,{force=false}={}){
-    return this.request(this.repoPath(`/git/refs/heads/${encodeURIComponent(branch)}`),{
+  async updateRef(branch,sha,{force=false}={}){
+    const out=await this.request(this.repoPath(`/git/refs/heads/${encodeURIComponent(branch)}`),{
       method:'PATCH',
       body:{sha,force}
     });
+    LastWriteCommitCache.set(branch,sha);
+    return out;
   },
-  getContent(path,ref){
-    return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}?ref=${encodeURIComponent(ref)}`));
+  async contentReadRef(ref){
+    if(ref && (ref===state.workBranch || ref===state.defaultBranch || ref===LEGACY_WORK_BRANCH)){
+      try{
+        const branchRef=await this.getRef(ref);
+        return branchRef && branchRef.object && branchRef.object.sha ? branchRef.object.sha : ref;
+      }catch(e){
+        return ref;
+      }
+    }
+    return ref;
+  },
+  async getContent(path,ref){
+    const readRef=await this.contentReadRef(ref);
+    return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}?ref=${encodeURIComponent(readRef)}`));
+  },
+  getGitCommit(sha){
+    return this.request(this.repoPath(`/git/commits/${encodeURIComponent(sha)}`));
+  },
+  getTreeBySha(treeSha,{recursive=false}={}){
+    return this.request(this.repoPath(`/git/trees/${encodeURIComponent(treeSha)}${recursive?'?recursive=1':''}`));
+  },
+  getBlob(sha){
+    return this.request(this.repoPath(`/git/blobs/${encodeURIComponent(sha)}`));
+  },
+  async getBranchTreeSnapshot(branch,{force=false,preferLastWrite=true}={}){
+    if(!force && state.contentTree && state.contentTree.branch===branch){
+      return state.contentTree;
+    }
+
+    let commitSha='';
+    let source='branch ref';
+
+    // Critical freshness fix:
+    // If this browser just saved to the content branch, GitHub returned the
+    // exact new commit SHA. Use that SHA for subsequent refresh/login reads
+    // instead of asking GitHub's branch/ref endpoints, which can briefly lag.
+    if(preferLastWrite && branch===state.workBranch){
+      commitSha=LastWriteCommitCache.get(branch);
+      if(commitSha) source='last successful write';
+    }
+
+    if(!commitSha){
+      const ref=await this.getRef(branch);
+      commitSha=ref.object.sha;
+      source='branch ref';
+    }
+
+    const commit=await this.getGitCommit(commitSha);
+    const treeSha=commit.tree.sha;
+    const tree=await this.getTreeBySha(treeSha,{recursive:true});
+    const snapshot={branch,commitSha,treeSha,source,tree:tree.tree||[]};
+    Store.setContentTree(snapshot);
+    return snapshot;
+  },
+  async getBlobFileFromSnapshot(path,snapshot){
+    const cleanPath=Paths.normalizeRepoPath(path);
+    const item=(snapshot.tree||[]).find(n=>n.path===cleanPath && n.type==='blob');
+    if(!item){
+      const err=new Error('File not found');
+      err.status=404;
+      throw err;
+    }
+    const blob=await this.getBlob(item.sha);
+    return {
+      path:cleanPath,
+      sha:item.sha,
+      type:'file',
+      encoding:blob.encoding || 'base64',
+      content:String(blob.content||'').replace(/\s+/g,'')
+    };
+  },
+  async getFileViaGitData(path,ref){
+    // Content tree model:
+    // For the CMS work branch, read from a single resolved tree snapshot.
+    // `main` is deploy-only and should not be used as an editable source.
+    if(ref===state.workBranch){
+      const snapshot=await this.getBranchTreeSnapshot(state.workBranch);
+      return this.getBlobFileFromSnapshot(path,snapshot);
+    }
+
+    const readRef=await this.contentReadRef(ref);
+    const commit=await this.getGitCommit(readRef);
+    const tree=await this.getTreeBySha(commit.tree.sha,{recursive:true});
+    return this.getBlobFileFromSnapshot(path,{branch:ref,commitSha:readRef,treeSha:commit.tree.sha,tree:tree.tree||[]});
   },
   getFile(path,ref){
-    return this.getContent(path,ref);
+    return this.getFileViaGitData(path,ref);
   },
   listContent(path,ref){
+    // Directory listings still use the contents API.
     return this.getContent(path,ref);
   },
   putContent(path,body){
     return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}`),{method:'PUT',body});
   },
-  saveFile(path,{message,content,branch,sha}){
-    return this.putContent(path,{message,content,branch,...(sha?{sha}:{})});
+  async saveFile(path,{message,content,branch,sha}){
+    const out=await this.putContent(path,{message,content,branch,...(sha?{sha}:{})});
+    if(out && out.commit && out.commit.sha) LastWriteCommitCache.set(branch,out.commit.sha);
+    return out;
   },
   deleteContent(path,body){
     return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}`),{method:'DELETE',body});
   },
-  deleteFile(path,{message,sha,branch}){
-    return this.deleteContent(path,{message,sha,branch});
+  async deleteFile(path,{message,sha,branch}){
+    const out=await this.deleteContent(path,{message,sha,branch});
+    if(out && out.commit && out.commit.sha) LastWriteCommitCache.set(branch,out.commit.sha);
+    return out;
   },
-  merge(base,head,commit_message){
-    return this.request(this.repoPath('/merges'),{method:'POST',body:{base,head,commit_message}});
+  async merge(base,head,commit_message){
+    const out=await this.request(this.repoPath('/merges'),{method:'POST',body:{base,head,commit_message}});
+    if(out && out.sha) LastWriteCommitCache.set(base,out.sha);
+    return out;
   },
   compare(base,head){
     return this.request(this.repoPath(`/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`));

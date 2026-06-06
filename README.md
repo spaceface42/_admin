@@ -1,81 +1,72 @@
-# GitCMS v1.1 Complete Package
+# GitCMS v1.1.4 Complete Codebase
 
-This package contains a complete GitCMS setup:
+This is the complete GitCMS codebase using the latest stable build:
 
-- single-file admin
-- split development source
-- build script
-- sample config
-- sample fragments manifest
-- marker-ready sample site
-- documentation
+```txt
+GitCMS version: 1.1.4-content-tree-pinned-write
+```
 
-## Required files for use
+## Model
+
+```txt
+content = CMS source tree
+main    = deploy target only
+```
+
+The admin reads editable CMS data from the `content` branch and publishes to `main`.
+
+## Included
 
 ```txt
 admin.html
 gitcms.config.json
 fragments.json
 docs/
-```
-
-## Development source
-
-```txt
-src/index.html
-src/admin.css
-src/admin.js
+src/
+tests/
 build-admin.mjs
+package.json
 ```
 
-To rebuild the single-file admin:
+## Build
+
+```bash
+npm run build
+```
+
+or:
 
 ```bash
 node build-admin.mjs
 ```
 
-## Branch model
-
-```txt
-GitCMS reads/writes: content
-GitHub Pages publishes: main
-Publish flow: content → main
-```
-
-## Recommended setup
-
-Create the content branch:
+## Test
 
 ```bash
-git fetch origin
-git checkout -b content origin/main
-git push -u origin content
+npm test
 ```
 
-Then open `admin.html`, connect to your repo, and edit fragments.
+## Use
 
-## Config
+1. Rename/keep `admin.html`.
+2. Create a `content` branch if needed.
+3. Open `admin.html`.
+4. Connect using a GitHub token with Contents read/write access.
+5. Edit fragments.
+6. Save to `content`.
+7. Publish to `main`.
 
-See:
+## Required GitHub token permission
+
+Fine-grained PAT:
 
 ```txt
-gitcms.config.json
+Contents: Read and write
 ```
 
-## Fragment manifest
-
-See:
+## Recommended GitHub Pages setup
 
 ```txt
-fragments.json
-```
-
-## Fragment format
-
-```html
-<!-- cms:start hero -->
-<section data-fragment="hero" data-label="Hero Section" id="hero" class="fragment hero">
-  <h1>Editable heading</h1>
-</section>
-<!-- cms:end hero -->
+Branch: main
+Folder: docs/
 ```

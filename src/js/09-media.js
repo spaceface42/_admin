@@ -105,6 +105,7 @@ async function saveConfig(){
       branch:state.workBranch,
       sha
     });
+    Store.clearContentTree();
 
     const manifestChanged=newManifestPath!==state.manifestPath;
     gitcmsConfig=next;
@@ -395,6 +396,7 @@ async function confirmDeleteMedia(){
       sha,
       branch:state.workBranch
     });
+    Store.clearContentTree();
 
     const pending=pendingMediaPreviews.get(path);
     if(pending && pending.url) URL.revokeObjectURL(pending.url);
@@ -513,6 +515,7 @@ async function uploadMediaFiles(){
 
       const content=await readFileBase64(file);
       const put=await GitHubApi.saveFile(path,{message:'cms: upload media '+name,content,branch:state.workBranch});
+    Store.clearContentTree();
       pending.sha=put && put.content ? put.content.sha : null;
       uploaded.push(pending);
     }

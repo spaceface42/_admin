@@ -25,9 +25,11 @@ el('resetDraftBtn').onclick=async()=>{
     const sha=ref.object.sha;
     try{
       await GitHubApi.updateRef(state.workBranch,sha,{force:true});
+      Store.clearContentTree();
     }catch(e){
       if(e.status===404 || e.status===422){
         await GitHubApi.createBranchFromSha(state.workBranch,sha);
+        Store.clearContentTree();
       }else throw e;
     }
     el('divergeBanner').classList.remove('show');

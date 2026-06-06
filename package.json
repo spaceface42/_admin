@@ -1,6 +1,6 @@
 {
   "name": "gitcms-admin",
-  "version": "1.1.0-refactor-pass4",
+  "version": "1.1.4-content-tree-pinned-write",
   "private": true,
   "type": "module",
   "scripts": {

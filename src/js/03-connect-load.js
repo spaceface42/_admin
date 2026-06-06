@@ -22,10 +22,11 @@ async function connect(){
     // ensure content/work branch exists
     await ensureWorkBranch();
 
-    // Reload config from the work branch first. This preserves unpublished
-    // Settings changes after a page refresh/reconnect, while still falling
-    // back to the default branch when the work branch has no config yet.
-    const branchCfg=await loadGitCMSConfig(true,[state.workBranch,state.defaultBranch]);
+    // From here on, content/work branch is the only CMS source tree.
+    Store.clearContentTree();
+    await GitHubApi.getBranchTreeSnapshot(state.workBranch,{force:true});
+
+    const branchCfg=await loadGitCMSConfig(true,[state.workBranch]);
     applyConfig(branchCfg);
 
     // persist creds
@@ -130,62 +131,46 @@ async function loadManifest(){
       return Array.isArray(parsed) ? parsed : null;
     }catch(e){ if(e.status===404) return null; throw e; }
   }
+
+  // Strict CMS source of truth: content/work branch only.
+  // Do not silently load fragments from main/default, because that can show stale
+  // live content in the admin after saves or publish operations.
   const workMan=await read(state.workBranch);
-  const defaultMan =await read(state.defaultBranch);
-  return {workMan,defaultMan};
+  return {workMan,defaultMan:null};
 }
 
 async function fetchFile(path){
-  // CMS source of truth: read the content/work branch first.
-  // The default branch is only a fallback for initial/missing files.
-  async function read(ref){
-    try{
-      const r=await GitHubApi.getFile(path,ref);
-      return {content:dec(r.content),sha:r.sha,ref};
-    }catch(e){ if(e.status===404) return null; throw e; }
+  try{
+    const r=await GitHubApi.getFile(path,state.workBranch);
+    return {path, content:dec(r.content), src:state.workBranch, shaMain:null, shaDraft:r.sha, fragments:[]};
+  }catch(e){
+    if(e.status===404) return null;
+    throw e;
   }
-
-  const work=await read(state.workBranch);
-  if(work){
-    return {path, content:work.content, src:state.workBranch, shaMain:null, shaDraft:work.sha, fragments:[]};
-  }
-
-  const main=await read(state.defaultBranch);
-  if(main){
-    return {path, content:main.content, src:state.defaultBranch, shaMain:main.sha, shaDraft:null, fragments:[]};
-  }
-
-  return null;
 }
 
 async function loadAll(){
   resetLoadValidation();
   setStatus('Loading…',true);
   Store.clearLoadedContent();
+  Store.clearContentTree();
+  await GitHubApi.getBranchTreeSnapshot(state.workBranch,{force:true});
   el('banner').classList.remove('show');
   el('divergeBanner').classList.remove('show');
 
   try{
     const {workMan,defaultMan}=await loadManifest();
 
-    // Build a list of (manifest, sourceLabel) attempts in priority order.
-    // Work branch first, then default branch as fallback if draft yields nothing.
-    const attempts=[];
-    if(workMan) attempts.push({manifest:workMan,from:state.workBranch});
-    if(defaultMan)  attempts.push({manifest:defaultMan, from:state.defaultBranch});
-
-    let used=null, diverged=false;
-
-    for(const attempt of attempts){
-      const result=await tryLoadFromManifest(attempt.manifest);
+    // Strict source of truth: load only from the content/work branch.
+    // Never fall back to main/default for editable source files.
+    let used=null;
+    if(workMan){
+      const result=await tryLoadFromManifest(workMan);
       if(result.count>0){
-        used=attempt;
-        // If we fell through to main because work branch produced nothing, flag divergence.
-        if(attempt.from===state.defaultBranch && workMan) diverged=true;
-        break;
+        used={manifest:workMan,from:state.workBranch};
+      }else{
+        state.files.clear(); state.frags.clear();
       }
-      // this attempt produced 0 — clear and try next
-      state.files.clear(); state.frags.clear();
     }
 
     if(!used){
@@ -194,19 +179,13 @@ async function loadAll(){
       if(state.frags.size===0 && (workMan||defaultMan)){
         // Manifest(s) existed but matched nothing anywhere.
         setStatus('Manifest matched no fragments',false);
-        toast('Manifest found, but no matching fragments in any file','err');
+        toast(`Manifest found on ${state.workBranch}, but no matching fragments in content files`,'err');
       }else if(!workMan && !defaultMan){
         el('banner').classList.add('show'); // genuine no-manifest case
       }
       state.manifest = defaultMan || workMan || buildManifestFromState();
     }else{
       state.manifest = used.manifest;
-      if(diverged){
-        el('divergeMsg').innerHTML =
-          `Your <b>${esc(state.workBranch)}</b> branch has diverged from <b>${esc(state.defaultBranch)}</b> and its manifest matched no fragments — loaded from <b>${esc(state.defaultBranch)}</b> instead. `+
-          `Edits will still save to ${esc(state.workBranch)}. If ${esc(state.workBranch)} is stale, reset it.`;
-        el('divergeBanner').classList.add('show');
-      }
       // Re-apply labels from the chosen manifest now that frags exist.
       relabelFromManifest(state.manifest);
     }
@@ -253,20 +232,10 @@ async function tryLoadFromManifest(manifest){
 async function tryTreeScan(){
   state.manifest=null;
 
-  async function scanBranch(ref){
-    const tree=await GitHubApi.getRecursiveTree(ref);
-    return tree.tree.filter(n=>n.type==='blob'&&/\.html?$/i.test(n.path)).map(n=>n.path);
-  }
-
-  let paths=[];
-  try{
-    paths=await scanBranch(state.workBranch);
-  }catch(e){
-    if(e.status!==404) throw e;
-  }
-  if(!paths.length && state.workBranch!==state.defaultBranch){
-    paths=await scanBranch(state.defaultBranch);
-  }
+  const snapshot=await GitHubApi.getBranchTreeSnapshot(state.workBranch);
+  const paths=(snapshot.tree||[])
+    .filter(n=>n.type==='blob'&&/\.html?$/i.test(n.path))
+    .map(n=>n.path);
 
   const recs=await Promise.all(paths.map(p=>fetchFile(p).catch(e=>{
     console.warn('scan skip',p,e); return null;

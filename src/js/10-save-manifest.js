@@ -14,6 +14,7 @@ el('saveManifestBtn').onclick=async()=>{
       branch:state.workBranch,
       sha
     });
+    Store.clearContentTree();
     state.manifest=man;
     el('banner').classList.remove('show');
     toast('Manifest saved to '+state.workBranch,'ok');

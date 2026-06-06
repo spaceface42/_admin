@@ -25,26 +25,24 @@ body {
   display: flex;
   gap: 22px;
   align-items: center;
+  border-bottom: 1px solid var(--line);
 }
 
 .logo {
   font-weight: 800;
   margin-right: auto;
+  font-size: 1.25rem;
 }
 
-a {
-  color: inherit;
-}
+a { color: inherit; }
 
 .wrap {
   max-width: 1040px;
   margin: 0 auto;
-  padding: 40px 22px 80px;
+  padding: 56px 22px 80px;
 }
 
-section {
-  margin: 0 0 58px;
-}
+section { margin: 0 0 58px; }
 
 h1, h2, h3 {
   font-family: Fraunces, Georgia, serif;
@@ -52,17 +50,17 @@ h1, h2, h3 {
 }
 
 h1 {
-  font-size: clamp(3rem, 8vw, 7rem);
+  font-size: clamp(3rem, 8vw, 6rem);
   margin: 0 0 20px;
 }
 
 h2 {
-  font-size: clamp(2rem, 4vw, 3.8rem);
+  font-size: clamp(2rem, 4vw, 3.5rem);
   margin: 0 0 18px;
 }
 
 .lede {
-  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  font-size: clamp(1.25rem, 2vw, 1.7rem);
   color: var(--muted);
   max-width: 760px;
 }
@@ -78,6 +76,32 @@ h2 {
   border-radius: 18px;
   padding: 22px;
   background: rgba(255,255,255,.42);
+}
+
+.avatar {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+}
+
+.contact-form {
+  display: grid;
+  gap: 10px;
+  max-width: 560px;
+}
+
+input, textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  font: inherit;
+  background: #fffaf2;
 }
 
 .btn {
@@ -105,4 +129,10 @@ img {
   justify-content: space-between;
   color: var(--muted);
   border-top: 1px solid var(--line);
+}
+
+@media (max-width: 700px) {
+  .site-nav, .site-foot {
+    flex-wrap: wrap;
+  }
 }
