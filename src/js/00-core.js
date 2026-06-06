@@ -23,7 +23,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.38-diagnostics-cache-section';
+const GITCMS_VERSION='1.1.39-diagnostics-clear-cache';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';

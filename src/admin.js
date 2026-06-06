@@ -300,7 +300,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.38-diagnostics-cache-section';
+const GITCMS_VERSION='1.1.39-diagnostics-clear-cache';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -3694,6 +3694,40 @@ async function renderDiagnostics(){
   }
 }
 
+async function clearDiagnosticsCache(){
+  const btn=el('diagnosticsClearCache');
+  if(btn){
+    btn.disabled=true;
+    btn.textContent='Clearing…';
+  }
+
+  try{
+    LastWriteCommitCache.clearRepo();
+    Store.clearContentTree();
+
+    if(state.owner && state.repo && state.workBranch){
+      await GitHubApi.getBranchTreeSnapshot(state.workBranch,{
+        force:true,
+        preferLastWrite:false
+      });
+    }
+
+    await renderDiagnostics();
+    toast('Local GitCMS cache cleared','ok');
+  }catch(e){
+    console.error('Clear diagnostics cache failed',e);
+    const box=el('diagnosticsErr');
+    box.textContent='Clear cache failed: '+(e.message||e);
+    box.classList.add('show');
+    toast('Clear cache failed','err');
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.textContent='Clear local cache';
+    }
+  }
+}
+
 function openDiagnostics(){
   el('diagnosticsModal').classList.add('show');
   renderDiagnostics();
@@ -3798,6 +3832,7 @@ el('diagnosticsClose').onclick=()=>el('diagnosticsModal').classList.remove('show
 el('diagnosticsCloseTop').onclick=()=>el('diagnosticsModal').classList.remove('show');
 el('diagnosticsRefresh').onclick=()=>renderDiagnostics();
 el('diagnosticsCopy').onclick=()=>copyDiagnostics();
+el('diagnosticsClearCache').onclick=()=>clearDiagnosticsCache();
 
 el('openContentBtn').onclick=openContentBranch;
 el('openLiveBtn').onclick=openLiveSite;

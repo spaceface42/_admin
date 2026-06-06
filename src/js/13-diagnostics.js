@@ -199,6 +199,40 @@ async function renderDiagnostics(){
   }
 }
 
+async function clearDiagnosticsCache(){
+  const btn=el('diagnosticsClearCache');
+  if(btn){
+    btn.disabled=true;
+    btn.textContent='Clearing…';
+  }
+
+  try{
+    LastWriteCommitCache.clearRepo();
+    Store.clearContentTree();
+
+    if(state.owner && state.repo && state.workBranch){
+      await GitHubApi.getBranchTreeSnapshot(state.workBranch,{
+        force:true,
+        preferLastWrite:false
+      });
+    }
+
+    await renderDiagnostics();
+    toast('Local GitCMS cache cleared','ok');
+  }catch(e){
+    console.error('Clear diagnostics cache failed',e);
+    const box=el('diagnosticsErr');
+    box.textContent='Clear cache failed: '+(e.message||e);
+    box.classList.add('show');
+    toast('Clear cache failed','err');
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.textContent='Clear local cache';
+    }
+  }
+}
+
 function openDiagnostics(){
   el('diagnosticsModal').classList.add('show');
   renderDiagnostics();
