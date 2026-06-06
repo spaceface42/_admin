@@ -300,7 +300,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.30-github-api-module';
+const GITCMS_VERSION='1.1.33-paths-module';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -380,6 +380,67 @@ const LastWriteCommitCache = Object.freeze({
     }));
   }
 });
+
+function parseRepoUrl(url){
+  return ConnectUtils.parseRepoUrl(url);
+}
+
+function escAttr(s){
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ---------- Paths ---------- */
+// Depends on state from 00-core.js and mediaPrefix() from 02-path-media-wrappers.js
+// only when mediaPublicUrl() is called without an explicit prefix.
+
+const Paths = Object.freeze({
+  githubPath(path){
+    return String(path||'').split('/').map(encodeURIComponent).join('/');
+  },
+  normalizeRepoPath(path){
+    return (path||'').trim().replace(/^\/+|\/+$/g,'').replace(/\/+/g,'/');
+  },
+  defaultPublicPrefixFor(dir){
+    const clean=this.normalizeRepoPath(dir).replace(/^docs\//,'');
+    return clean.replace(/\/?$/,'/');
+  },
+  normalizePublicPrefix(prefix,dir){
+    let raw=(prefix||'').trim()||this.defaultPublicPrefixFor(dir);
+    if(raw.includes('{path}') || raw.includes('{file}')) return raw;
+    return raw.replace(/\/?$/,'/');
+  },
+  isProjectPagesSite(owner=state.owner,repo=state.repo){
+    return !!(owner && repo && repo.toLowerCase()!==`${owner.toLowerCase()}.github.io`);
+  },
+  normalizePathParts(path){
+    const parts=[];
+    for(const part of String(path||'').split('/')){
+      if(!part || part==='.') continue;
+      if(part==='..') parts.pop();
+      else parts.push(part);
+    }
+    return parts.join('/');
+  },
+  publicPathToRepoPath(publicPath){
+    const clean=this.normalizeRepoPath(publicPath);
+    if(!clean) return '';
+    if(clean.startsWith('docs/')) return clean;
+    return 'docs/' + clean;
+  },
+  mediaPublicUrl(repoPath,prefix=mediaPrefix()){
+    const file=String(repoPath||'').split('/').pop();
+    if(prefix.includes('{path}')) return prefix.replace('{path}', repoPath);
+    if(prefix.includes('{file}')) return prefix.replace('{file}', file);
+    return prefix.replace(/\/?$/,'/') + file;
+  },
+  rawUrlForRepoPath(path,ref=state.workBranch){
+    const encoded=this.normalizeRepoPath(path).split('/').map(encodeURIComponent).join('/');
+    return `https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(ref)}/${encoded}`;
+  }
+});
+
+/* ---------- Store ---------- */
+// Depends on state/constants/Paths from 00-core.js.
 
 const Store = Object.freeze({
   setRepo(owner,repo,token){
@@ -463,122 +524,6 @@ const Store = Object.freeze({
     state.validation.runtime=[];
   }
 });
-
-const Paths = Object.freeze({
-  githubPath(path){
-    return String(path||'').split('/').map(encodeURIComponent).join('/');
-  },
-  normalizeRepoPath(path){
-    return (path||'').trim().replace(/^\/+|\/+$/g,'').replace(/\/+/g,'/');
-  },
-  defaultPublicPrefixFor(dir){
-    const clean=this.normalizeRepoPath(dir).replace(/^docs\//,'');
-    return clean.replace(/\/?$/,'/');
-  },
-  normalizePublicPrefix(prefix,dir){
-    let raw=(prefix||'').trim()||this.defaultPublicPrefixFor(dir);
-    if(raw.includes('{path}') || raw.includes('{file}')) return raw;
-    return raw.replace(/\/?$/,'/');
-  },
-  isProjectPagesSite(owner=state.owner,repo=state.repo){
-    return !!(owner && repo && repo.toLowerCase()!==`${owner.toLowerCase()}.github.io`);
-  },
-  normalizePathParts(path){
-    const parts=[];
-    for(const part of String(path||'').split('/')){
-      if(!part || part==='.') continue;
-      if(part==='..') parts.pop();
-      else parts.push(part);
-    }
-    return parts.join('/');
-  },
-  publicPathToRepoPath(publicPath){
-    const clean=this.normalizeRepoPath(publicPath);
-    if(!clean) return '';
-    if(clean.startsWith('docs/')) return clean;
-    return 'docs/' + clean;
-  },
-  mediaPublicUrl(repoPath,prefix=mediaPrefix()){
-    const file=String(repoPath||'').split('/').pop();
-    if(prefix.includes('{path}')) return prefix.replace('{path}', repoPath);
-    if(prefix.includes('{file}')) return prefix.replace('{file}', file);
-    return prefix.replace(/\/?$/,'/') + file;
-  },
-  rawUrlForRepoPath(path,ref=state.workBranch){
-    const encoded=this.normalizeRepoPath(path).split('/').map(encodeURIComponent).join('/');
-    return `https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(ref)}/${encoded}`;
-  }
-});
-
-function parseRepoUrl(url){
-  return ConnectUtils.parseRepoUrl(url);
-}
-
-
-
-function ghPath(path){
-  return Paths.githubPath(path);
-}
-function normalizeRepoPath(path){
-  return Paths.normalizeRepoPath(path);
-}
-function defaultPublicPrefixFor(dir){
-  return Paths.defaultPublicPrefixFor(dir);
-}
-function normalizePublicPrefix(prefix,dir){
-  return Paths.normalizePublicPrefix(prefix,dir);
-}
-function mediaDir(){
-  const m=configMedia();
-  return Paths.normalizeRepoPath((m && m.dir) || DEFAULT_MEDIA_DIR);
-}
-function mediaPrefix(){
-  const m=configMedia();
-  const raw=(m && m.publicPrefix) || '';
-  return Paths.normalizePublicPrefix(raw,mediaDir());
-}
-
-function contentAssetRef(){
-  return state.contentTree && state.contentTree.commitSha ? state.contentTree.commitSha : state.workBranch;
-}
-
-function previewCssList(){
-  const p=gitcmsConfig && gitcmsConfig.preview;
-  if(!p || typeof p!=='object') return [];
-  const css=Array.isArray(p.css) ? p.css : (typeof p.css==='string' ? [p.css] : []);
-  return css.map(x=>String(x).trim()).filter(Boolean);
-}
-function publicPathToRepoPath(publicPath){
-  return Paths.publicPathToRepoPath(publicPath);
-}
-function rawUrlForRepoPath(path){
-  return Paths.rawUrlForRepoPath(path,contentAssetRef());
-}
-function previewCssTags(){
-  if(!state.owner || !state.repo) return '';
-  return previewCssList().map(path=>{
-    const repoPath=Paths.publicPathToRepoPath(path);
-    const href=Paths.rawUrlForRepoPath(repoPath,contentAssetRef()) + '?v=' + Date.now();
-    return `<link rel="stylesheet" href="${escAttr(href)}">`;
-  }).join('\n');
-}
-
-function mediaPublicUrl(path){
-  return Paths.mediaPublicUrl(path,mediaPrefix());
-}
-
-function mimeFromName(name){
-  const n=name.toLowerCase();
-  if(n.endsWith('.svg')) return 'image/svg+xml';
-  if(n.endsWith('.png')) return 'image/png';
-  if(n.endsWith('.webp')) return 'image/webp';
-  if(n.endsWith('.gif')) return 'image/gif';
-  if(n.endsWith('.avif')) return 'image/avif';
-  return 'image/jpeg';
-}
-function escAttr(s){
-  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
 
 /* ---------- GitHub API client ---------- */
 // Depends on state/Store/Paths/LastWriteCommitCache from 00-core.js
@@ -1383,6 +1328,71 @@ const FragmentParser = Object.freeze({
   rebuildMarkedFragmentFromParts,
   parseFileFragments
 });
+
+/* ---------- path/media wrapper helpers ---------- */
+// Thin browser wrappers around Paths/config helpers.
+// Kept separate from 00-core.js so core stays focused on constants/state/Store.
+
+function ghPath(path){
+  return Paths.githubPath(path);
+}
+function normalizeRepoPath(path){
+  return Paths.normalizeRepoPath(path);
+}
+function defaultPublicPrefixFor(dir){
+  return Paths.defaultPublicPrefixFor(dir);
+}
+function normalizePublicPrefix(prefix,dir){
+  return Paths.normalizePublicPrefix(prefix,dir);
+}
+function mediaDir(){
+  const m=configMedia();
+  return Paths.normalizeRepoPath((m && m.dir) || DEFAULT_MEDIA_DIR);
+}
+function mediaPrefix(){
+  const m=configMedia();
+  const raw=(m && m.publicPrefix) || '';
+  return Paths.normalizePublicPrefix(raw,mediaDir());
+}
+
+function contentAssetRef(){
+  return state.contentTree && state.contentTree.commitSha ? state.contentTree.commitSha : state.workBranch;
+}
+
+function previewCssList(){
+  const p=gitcmsConfig && gitcmsConfig.preview;
+  if(!p || typeof p!=='object') return [];
+  const css=Array.isArray(p.css) ? p.css : (typeof p.css==='string' ? [p.css] : []);
+  return css.map(x=>String(x).trim()).filter(Boolean);
+}
+function publicPathToRepoPath(publicPath){
+  return Paths.publicPathToRepoPath(publicPath);
+}
+function rawUrlForRepoPath(path){
+  return Paths.rawUrlForRepoPath(path,contentAssetRef());
+}
+function previewCssTags(){
+  if(!state.owner || !state.repo) return '';
+  return previewCssList().map(path=>{
+    const repoPath=Paths.publicPathToRepoPath(path);
+    const href=Paths.rawUrlForRepoPath(repoPath,contentAssetRef()) + '?v=' + Date.now();
+    return `<link rel="stylesheet" href="${escAttr(href)}">`;
+  }).join('\n');
+}
+
+function mediaPublicUrl(path){
+  return Paths.mediaPublicUrl(path,mediaPrefix());
+}
+
+function mimeFromName(name){
+  const n=name.toLowerCase();
+  if(n.endsWith('.svg')) return 'image/svg+xml';
+  if(n.endsWith('.png')) return 'image/png';
+  if(n.endsWith('.webp')) return 'image/webp';
+  if(n.endsWith('.gif')) return 'image/gif';
+  if(n.endsWith('.avif')) return 'image/avif';
+  return 'image/jpeg';
+}
 
 /* ---------- connect / load ---------- */
 async function connect(){
