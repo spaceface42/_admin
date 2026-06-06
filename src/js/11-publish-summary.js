@@ -55,7 +55,7 @@ async function loadPublishSummary(){
   try{
     const base=encodeURIComponent(state.defaultBranch);
     const head=encodeURIComponent(state.workBranch);
-    const compare=await gh(`/repos/${state.owner}/${state.repo}/compare/${base}...${head}`);
+    const compare=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/compare/${base}...${head}`);
     renderPublishSummary(compare);
   }catch(e){
     lastPublishCompare=null;

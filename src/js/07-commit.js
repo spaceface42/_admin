@@ -40,7 +40,7 @@ async function doCommit(){
           let content=fileRec.content;
           let sha=null;
           try{
-            const cur=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(f.path)}?ref=${encodeURIComponent(state.workBranch)}`);
+            const cur=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(f.path)}?ref=${encodeURIComponent(state.workBranch)}`);
             content=dec(cur.content);
             sha=cur.sha;
           }catch(e){ if(e.status!==404) throw e; }
@@ -50,7 +50,7 @@ async function doCommit(){
             content=replaceFragment(content,frag);
           }
 
-          put=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(f.path)}`,{
+          put=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(f.path)}`,{
             method:'PUT',
             body:{ message:msg, content:enc(content), branch:state.workBranch, ...(sha?{sha}:{}) }
           });
@@ -142,10 +142,10 @@ async function commitManifest(msg){
   // include any fragments not yet in manifest? keep manifest as-is otherwise.
   let sha=null;
   try{
-    const cur=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(state.manifestPath)}?ref=${encodeURIComponent(state.workBranch)}`);
+    const cur=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(state.manifestPath)}?ref=${encodeURIComponent(state.workBranch)}`);
     sha=cur.sha;
   }catch(e){ if(e.status!==404) throw e; }
-  await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(state.manifestPath)}`,{
+  await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(state.manifestPath)}`,{
     method:'PUT',
     body:{message:msg+' (manifest)',content:enc(JSON.stringify(updated,null,2)+'\n'),branch:state.workBranch,...(sha?{sha}:{})}
   });

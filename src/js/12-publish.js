@@ -5,7 +5,7 @@ el('pubConfirm').onclick=doPublish;
 
 async function syncWorkBranchFromMain(){
   try{
-    await gh(`/repos/${state.owner}/${state.repo}/merges`,{
+    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/merges`,{
       method:'POST',
       body:{base:state.workBranch,head:state.defaultBranch,commit_message:'cms: sync '+state.defaultBranch+' → '+state.workBranch}
     });
@@ -21,7 +21,7 @@ async function doPublish(){
   try{
     await syncWorkBranchFromMain();
     btn.textContent='Publishing…';
-    await gh(`/repos/${state.owner}/${state.repo}/merges`,{
+    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/merges`,{
       method:'POST',
       body:{base:state.defaultBranch,head:state.workBranch,commit_message:'cms: publish '+state.workBranch+' → '+state.defaultBranch}
     });

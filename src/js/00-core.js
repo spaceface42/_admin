@@ -57,26 +57,165 @@ function toast(msg,kind){
 }
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
-async function gh(path,{method='GET',body,raw=false}={}){
-  const res=await fetch(API+path,{
-    method,
-    headers:{
-      'Authorization':'Bearer '+state.token,
-      'Accept':'application/vnd.github+json',
-      'X-GitHub-Api-Version':'2022-11-28',
-      ...(body?{'Content-Type':'application/json'}:{})
-    },
-    body:body?JSON.stringify(body):undefined
-  });
-  if(!res.ok){
-    let detail=''; try{detail=(await res.json()).message||'';}catch(e){}
-    const err=new Error(detail||res.statusText); err.status=res.status; throw err;
+
+const Store = Object.freeze({
+  setRepo(owner,repo,token){
+    state.owner=owner;
+    state.repo=repo;
+    state.token=token;
+  },
+  setDefaultBranch(branch){
+    state.defaultBranch=branch||'main';
+  },
+  setWorkBranch(branch){
+    state.workBranch=(branch||DEFAULT_WORK_BRANCH).trim();
+  },
+  setManifestPath(path){
+    state.manifestPath=Paths.normalizeRepoPath(path)||DEFAULT_MANIFEST_PATH;
+  },
+  clearLoadedContent(){
+    state.files.clear();
+    state.frags.clear();
+    state.activeId=null;
+  },
+  setManifest(manifest){
+    state.manifest=manifest;
+  },
+  setActiveFragment(id){
+    state.activeId=id;
+  },
+  addFile(fileRec){
+    state.files.set(fileRec.path,fileRec);
+  },
+  removeFile(path){
+    state.files.delete(path);
+  },
+  addFragment(fragment){
+    state.frags.set(fragment.id,fragment);
+  },
+  clearValidationBucket(kind){
+    if(state.validation && state.validation[kind]) state.validation[kind]=[];
+  },
+  resetRuntimeValidation(){
+    state.validation.manifest=[];
+    state.validation.markers=[];
+    state.validation.runtime=[];
   }
-  if(raw) return res;
-  if(res.status===204) return null;
-  const text=await res.text();
-  return text ? JSON.parse(text) : null;
+});
+
+const Paths = Object.freeze({
+  githubPath(path){
+    return String(path||'').split('/').map(encodeURIComponent).join('/');
+  },
+  normalizeRepoPath(path){
+    return (path||'').trim().replace(/^\/+|\/+$/g,'').replace(/\/+/g,'/');
+  },
+  defaultPublicPrefixFor(dir){
+    const clean=this.normalizeRepoPath(dir).replace(/^docs\//,'');
+    return clean.replace(/\/?$/,'/');
+  },
+  normalizePublicPrefix(prefix,dir){
+    let raw=(prefix||'').trim()||this.defaultPublicPrefixFor(dir);
+    if(raw.includes('{path}') || raw.includes('{file}')) return raw;
+    return raw.replace(/\/?$/,'/');
+  },
+  isProjectPagesSite(owner=state.owner,repo=state.repo){
+    return !!(owner && repo && repo.toLowerCase()!==`${owner.toLowerCase()}.github.io`);
+  },
+  normalizePathParts(path){
+    const parts=[];
+    for(const part of String(path||'').split('/')){
+      if(!part || part==='.') continue;
+      if(part==='..') parts.pop();
+      else parts.push(part);
+    }
+    return parts.join('/');
+  },
+  publicPathToRepoPath(publicPath){
+    const clean=this.normalizeRepoPath(publicPath);
+    if(!clean) return '';
+    if(clean.startsWith('docs/')) return clean;
+    return 'docs/' + clean;
+  },
+  mediaPublicUrl(repoPath,prefix=mediaPrefix()){
+    const file=String(repoPath||'').split('/').pop();
+    if(prefix.includes('{path}')) return prefix.replace('{path}', repoPath);
+    if(prefix.includes('{file}')) return prefix.replace('{file}', file);
+    return prefix.replace(/\/?$/,'/') + file;
+  },
+  rawUrlForRepoPath(path,ref=state.workBranch){
+    const encoded=this.normalizeRepoPath(path).split('/').map(encodeURIComponent).join('/');
+    return `https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(ref)}/${encoded}`;
+  }
+});
+
+const GitHubApi = Object.freeze({
+  repoPath(path=''){
+    return `/repos/${state.owner}/${state.repo}${path}`;
+  },
+  async request(path,{method='GET',body,raw=false}={}){
+    const res=await fetch(API+path,{
+      method,
+      headers:{
+        'Authorization':'Bearer '+state.token,
+        'Accept':'application/vnd.github+json',
+        'X-GitHub-Api-Version':'2022-11-28',
+        ...(body?{'Content-Type':'application/json'}:{})
+      },
+      body:body?JSON.stringify(body):undefined
+    });
+    if(!res.ok){
+      let detail=''; try{detail=(await res.json()).message||'';}catch(e){}
+      const err=new Error(detail||res.statusText); err.status=res.status; throw err;
+    }
+    if(raw) return res;
+    if(res.status===204) return null;
+    const text=await res.text();
+    return text ? JSON.parse(text) : null;
+  },
+  getRepo(){
+    return this.request(this.repoPath());
+  },
+  getBranch(branch){
+    return this.request(this.repoPath(`/branches/${encodeURIComponent(branch)}`));
+  },
+  getRef(branch){
+    return this.request(this.repoPath(`/git/ref/heads/${encodeURIComponent(branch)}`));
+  },
+  createRef(branch,sha){
+    return this.request(this.repoPath('/git/refs'),{
+      method:'POST',
+      body:{ref:`refs/heads/${branch}`,sha}
+    });
+  },
+  getContent(path,ref){
+    return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}?ref=${encodeURIComponent(ref)}`));
+  },
+  putContent(path,body){
+    return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}`),{method:'PUT',body});
+  },
+  deleteContent(path,body){
+    return this.request(this.repoPath(`/contents/${Paths.githubPath(path)}`),{method:'DELETE',body});
+  },
+  merge(base,head,commit_message){
+    return this.request(this.repoPath('/merges'),{method:'POST',body:{base,head,commit_message}});
+  },
+  compare(base,head){
+    return this.request(this.repoPath(`/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`));
+  },
+  tree(ref){
+    return this.request(this.repoPath(`/git/trees/${encodeURIComponent(ref)}?recursive=1`));
+  },
+  pages(){
+    return this.request(this.repoPath('/pages'));
+  }
+});
+
+// Compatibility wrapper. New code should prefer GitHubApi.request().
+async function gh(path,opts={}){
+  return GitHubApi.request(path,opts);
 }
+
 
 function parseRepoUrl(url){
   const m=url.trim().replace(/\.git$/,'').match(/github\.com[/:]([^/]+)\/([^/]+)/);
@@ -85,34 +224,27 @@ function parseRepoUrl(url){
 }
 
 
+
 function ghPath(path){
-  return path.split('/').map(encodeURIComponent).join('/');
+  return Paths.githubPath(path);
 }
 function normalizeRepoPath(path){
-  return (path||'').trim().replace(/^\/+|\/+$/g,'').replace(/\/+/g,'/');
+  return Paths.normalizeRepoPath(path);
 }
 function defaultPublicPrefixFor(dir){
-  const clean=normalizeRepoPath(dir).replace(/^docs\//,'');
-  // GitHub Pages project sites usually live under /<repo>/.
-  // Therefore a leading slash like /assets/media/ points to the domain root,
-  // not the project root. Default to a relative prefix: assets/media/
-  return clean.replace(/\/?$/,'/');
+  return Paths.defaultPublicPrefixFor(dir);
 }
 function normalizePublicPrefix(prefix,dir){
-  let raw=(prefix||'').trim()||defaultPublicPrefixFor(dir);
-  if(raw.includes('{path}') || raw.includes('{file}')) return raw;
-  // Preserve exactly what the user chose: relative, root-relative, parent-relative,
-  // or absolute URL. Only ensure a trailing slash for simple folder prefixes.
-  return raw.replace(/\/?$/,'/');
+  return Paths.normalizePublicPrefix(prefix,dir);
 }
 function mediaDir(){
   const m=configMedia();
-  return normalizeRepoPath((m && m.dir) || DEFAULT_MEDIA_DIR);
+  return Paths.normalizeRepoPath((m && m.dir) || DEFAULT_MEDIA_DIR);
 }
 function mediaPrefix(){
   const m=configMedia();
   const raw=(m && m.publicPrefix) || '';
-  return normalizePublicPrefix(raw,mediaDir());
+  return Paths.normalizePublicPrefix(raw,mediaDir());
 }
 
 function previewCssList(){
@@ -122,33 +254,24 @@ function previewCssList(){
   return css.map(x=>String(x).trim()).filter(Boolean);
 }
 function publicPathToRepoPath(publicPath){
-  const clean=normalizeRepoPath(publicPath);
-  if(!clean) return '';
-  // In this GitHub Pages setup, public paths are relative to docs/.
-  // If the config later needs non-docs publishing, this can become configurable.
-  if(clean.startsWith('docs/')) return clean;
-  return 'docs/' + clean;
+  return Paths.publicPathToRepoPath(publicPath);
 }
 function rawUrlForRepoPath(path){
-  const encoded=normalizeRepoPath(path).split('/').map(encodeURIComponent).join('/');
-  return `https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(state.workBranch)}/${encoded}`;
+  return Paths.rawUrlForRepoPath(path,state.workBranch);
 }
 function previewCssTags(){
   if(!state.owner || !state.repo) return '';
   return previewCssList().map(path=>{
-    const repoPath=publicPathToRepoPath(path);
-    const href=rawUrlForRepoPath(repoPath) + '?v=' + Date.now();
+    const repoPath=Paths.publicPathToRepoPath(path);
+    const href=Paths.rawUrlForRepoPath(repoPath,state.workBranch) + '?v=' + Date.now();
     return `<link rel="stylesheet" href="${escAttr(href)}">`;
   }).join('\n');
 }
 
 function mediaPublicUrl(path){
-  const prefix=mediaPrefix();
-  const file=path.split('/').pop();
-  if(prefix.includes('{path}')) return prefix.replace('{path}', path);
-  if(prefix.includes('{file}')) return prefix.replace('{file}', file);
-  return prefix.replace(/\/?$/,'/') + file;
+  return Paths.mediaPublicUrl(path,mediaPrefix());
 }
+
 function mimeFromName(name){
   const n=name.toLowerCase();
   if(n.endsWith('.svg')) return 'image/svg+xml';

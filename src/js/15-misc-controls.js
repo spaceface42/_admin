@@ -21,15 +21,15 @@ el('resetDraftBtn').onclick=async()=>{
      `Any unpublished commits on ${state.workBranch} will be lost.`)) return;
   const btn=el('resetDraftBtn'); btn.disabled=true; btn.textContent='Resetting…';
   try{
-    const ref=await gh(`/repos/${state.owner}/${state.repo}/git/ref/heads/${state.defaultBranch}`);
+    const ref=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/ref/heads/${state.defaultBranch}`);
     const sha=ref.object.sha;
     try{
-      await gh(`/repos/${state.owner}/${state.repo}/git/refs/heads/${state.workBranch}`,{
+      await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/refs/heads/${state.workBranch}`,{
         method:'PATCH', body:{sha,force:true}
       });
     }catch(e){
       if(e.status===404 || e.status===422){
-        await gh(`/repos/${state.owner}/${state.repo}/git/refs`,{
+        await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/refs`,{
           method:'POST', body:{ref:`refs/heads/${state.workBranch}`,sha}
         });
       }else throw e;

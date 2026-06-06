@@ -54,7 +54,7 @@ function showEmpty(){
 
 function selectFragment(id){
   if(state.activeId && state.activeId!==id) syncActiveFromTextarea();
-  state.activeId=id;
+  Store.setActiveFragment(id);
   const f=state.frags.get(id);
   el('emptyState').style.display='none';
   el('editorPane').style.display='flex';

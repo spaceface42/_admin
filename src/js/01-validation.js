@@ -183,3 +183,16 @@ function renderValidationBox(){
   box.innerHTML=`<b>${warnings.length} validation warning${warnings.length===1?'':'s'}</b><ul>${rows}${more}</ul>`;
   box.classList.add('show');
 }
+
+
+const Validation = Object.freeze({
+  count:validationCount,
+  resetLoad:resetLoadValidation,
+  add:addValidation,
+  all:allValidationWarnings,
+  validateConfig:validateGitCMSConfig,
+  validateManifestEntries,
+  validateManifestMatchesLoaded,
+  validateMarkersInFile,
+  renderBox:renderValidationBox
+});

@@ -13,7 +13,7 @@ async function loadGitCMSConfig(force=false,refs=null){
   const refsToTry=refs||[state.workBranch,state.defaultBranch];
   for(const ref of refsToTry){
     try{
-      const r=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(CONFIG_PATH)}?ref=${encodeURIComponent(ref)}`);
+      const r=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(CONFIG_PATH)}?ref=${encodeURIComponent(ref)}`);
       let parsed=null;
       try{
         parsed=JSON.parse(dec(r.content));
@@ -95,11 +95,11 @@ async function saveConfig(){
 
     let sha=null;
     try{
-      const cur=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(CONFIG_PATH)}?ref=${encodeURIComponent(state.workBranch)}`);
+      const cur=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(CONFIG_PATH)}?ref=${encodeURIComponent(state.workBranch)}`);
       sha=cur.sha;
     }catch(e){ if(e.status!==404) throw e; }
 
-    await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(CONFIG_PATH)}`,{
+    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(CONFIG_PATH)}`,{
       method:'PUT',
       body:{
         message:'cms: update GitCMS config',
@@ -174,7 +174,7 @@ async function loadMedia(silent=false){
   if(!silent) setMediaGridEmpty('Loading images…');
 
   try{
-    const items=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(dir)}?ref=${encodeURIComponent(state.workBranch)}`);
+    const items=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(dir)}?ref=${encodeURIComponent(state.workBranch)}`);
     const images=(Array.isArray(items)?items:[]).filter(i=>i.type==='file'&&IMAGE_RE.test(i.name));
     const now=Date.now();
     const seen=new Set(images.map(i=>i.path));
@@ -260,7 +260,7 @@ async function loadMediaThumb(item,slot,attempt=0){
       slot.textContent='large file';
       return;
     }
-    const r=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(item.path)}?ref=${encodeURIComponent(state.workBranch)}&v=${encodeURIComponent(item.sha||Date.now())}`);
+    const r=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(item.path)}?ref=${encodeURIComponent(state.workBranch)}&v=${encodeURIComponent(item.sha||Date.now())}`);
     const img=document.createElement('img');
     img.className='media-thumb';
     img.alt=item.name;
@@ -389,11 +389,11 @@ async function confirmDeleteMedia(){
   try{
     let sha=item.sha || null;
     if(!sha){
-      const cur=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}?ref=${encodeURIComponent(state.workBranch)}`);
+      const cur=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}?ref=${encodeURIComponent(state.workBranch)}`);
       sha=cur.sha;
     }
 
-    await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}`,{
+    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}`,{
       method:'DELETE',
       body:{
         message:'cms: delete media '+name,
@@ -457,7 +457,7 @@ function readFileBase64(file){
 
 async function mediaPathExists(path){
   try{
-    await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}?ref=${encodeURIComponent(state.workBranch)}`);
+    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}?ref=${encodeURIComponent(state.workBranch)}`);
     return true;
   }catch(e){
     if(e.status===404) return false;
@@ -518,7 +518,7 @@ async function uploadMediaFiles(){
       pendingMediaPreviews.set(path,pending);
 
       const content=await readFileBase64(file);
-      const put=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}`,{
+      const put=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}`,{
         method:'PUT',
         body:{message:'cms: upload media '+name,content,branch:state.workBranch}
       });

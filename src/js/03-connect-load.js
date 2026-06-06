@@ -6,13 +6,13 @@ async function connect(){
   if(!parsed){ showLoginErr('Could not parse a github.com owner/repo from that URL.'); return; }
   if(!tok){ showLoginErr('A token is required.'); return; }
 
-  state.owner=parsed.owner; state.repo=parsed.repo; state.token=tok;
+  Store.setRepo(parsed.owner,parsed.repo,tok);
   const btn=el('connectBtn'); btn.disabled=true; btn.textContent='Connecting…';
 
   try{
     // resolve default branch
-    const repoInfo=await gh(`/repos/${state.owner}/${state.repo}`);
-    state.defaultBranch=repoInfo.default_branch||'main';
+    const repoInfo=await GitHubApi.request(`/repos/${state.owner}/${state.repo}`);
+    Store.setDefaultBranch(repoInfo.default_branch||'main');
 
     // Load config from main FIRST so we know workBranch and manifestPath before
     // ensureWorkBranch() or any branch operations.
@@ -49,9 +49,9 @@ async function connect(){
 function applyConfig(cfg){
   if(!cfg) return;
   if(typeof cfg.workBranch==='string' && cfg.workBranch.trim())
-    state.workBranch=cfg.workBranch.trim();
+    Store.setWorkBranch(cfg.workBranch.trim());
   if(typeof cfg.manifestPath==='string' && cfg.manifestPath.trim())
-    state.manifestPath=normalizeRepoPath(cfg.manifestPath)||DEFAULT_MANIFEST_PATH;
+    Store.setManifestPath(cfg.manifestPath);
 }
 
 /* Update all branch-name labels in the UI after connect or config save. */
@@ -90,7 +90,7 @@ function showLoginErr(m){ const x=el('loginErr'); x.textContent=m; x.style.displ
 
 async function ensureWorkBranch(){
   try{
-    await gh(`/repos/${state.owner}/${state.repo}/branches/${encodeURIComponent(state.workBranch)}`);
+    await GitHubApi.request(`/repos/${state.owner}/${state.repo}/branches/${encodeURIComponent(state.workBranch)}`);
     return;
   }catch(e){
     if(e.status!==404) throw e;
@@ -101,15 +101,15 @@ async function ensureWorkBranch(){
   let sourceBranch=state.defaultBranch;
   if(state.workBranch!==LEGACY_WORK_BRANCH){
     try{
-      await gh(`/repos/${state.owner}/${state.repo}/branches/${encodeURIComponent(LEGACY_WORK_BRANCH)}`);
+      await GitHubApi.request(`/repos/${state.owner}/${state.repo}/branches/${encodeURIComponent(LEGACY_WORK_BRANCH)}`);
       sourceBranch=LEGACY_WORK_BRANCH;
     }catch(e){
       if(e.status!==404) throw e;
     }
   }
 
-  const ref=await gh(`/repos/${state.owner}/${state.repo}/git/ref/heads/${encodeURIComponent(sourceBranch)}`);
-  await gh(`/repos/${state.owner}/${state.repo}/git/refs`,{
+  const ref=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/ref/heads/${encodeURIComponent(sourceBranch)}`);
+  await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/refs`,{
     method:'POST',
     body:{ref:`refs/heads/${state.workBranch}`,sha:ref.object.sha}
   });
@@ -121,7 +121,7 @@ async function ensureWorkBranch(){
 async function loadManifest(){
   async function read(ref){
     try{
-      const r=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(state.manifestPath)}?ref=${encodeURIComponent(ref)}`);
+      const r=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(state.manifestPath)}?ref=${encodeURIComponent(ref)}`);
       let parsed=null;
       try{
         parsed=JSON.parse(dec(r.content));
@@ -143,7 +143,7 @@ async function fetchFile(path){
   // The default branch is only a fallback for initial/missing files.
   async function read(ref){
     try{
-      const r=await gh(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}?ref=${encodeURIComponent(ref)}`);
+      const r=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/contents/${ghPath(path)}?ref=${encodeURIComponent(ref)}`);
       return {content:dec(r.content),sha:r.sha,ref};
     }catch(e){ if(e.status===404) return null; throw e; }
   }
@@ -164,7 +164,7 @@ async function fetchFile(path){
 async function loadAll(){
   resetLoadValidation();
   setStatus('Loading…',true);
-  state.files.clear(); state.frags.clear(); state.activeId=null;
+  Store.clearLoadedContent();
   el('banner').classList.remove('show');
   el('divergeBanner').classList.remove('show');
 
@@ -257,7 +257,7 @@ async function tryTreeScan(){
   state.manifest=null;
 
   async function scanBranch(ref){
-    const tree=await gh(`/repos/${state.owner}/${state.repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
+    const tree=await GitHubApi.request(`/repos/${state.owner}/${state.repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
     return tree.tree.filter(n=>n.type==='blob'&&/\.html?$/i.test(n.path)).map(n=>n.path);
   }
 
