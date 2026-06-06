@@ -462,7 +462,7 @@
                 <button id="previewPageBtn" type="button">Page</button>
               </div>
             </div>
-            <div class="preview-wrap"><iframe id="preview" sandbox></iframe></div>
+            <div class="preview-wrap"><iframe id="preview" title="Live preview" sandbox></iframe></div>
           </div>
         </div>
       </div>
@@ -660,7 +660,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.4-content-tree-pinned-write';
+const GITCMS_VERSION='1.1.7-preview-blob';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -1053,6 +1053,10 @@ function mediaPrefix(){
   return Paths.normalizePublicPrefix(raw,mediaDir());
 }
 
+function contentAssetRef(){
+  return state.contentTree && state.contentTree.commitSha ? state.contentTree.commitSha : state.workBranch;
+}
+
 function previewCssList(){
   const p=gitcmsConfig && gitcmsConfig.preview;
   if(!p || typeof p!=='object') return [];
@@ -1063,13 +1067,13 @@ function publicPathToRepoPath(publicPath){
   return Paths.publicPathToRepoPath(publicPath);
 }
 function rawUrlForRepoPath(path){
-  return Paths.rawUrlForRepoPath(path,state.workBranch);
+  return Paths.rawUrlForRepoPath(path,contentAssetRef());
 }
 function previewCssTags(){
   if(!state.owner || !state.repo) return '';
   return previewCssList().map(path=>{
     const repoPath=Paths.publicPathToRepoPath(path);
-    const href=Paths.rawUrlForRepoPath(repoPath,state.workBranch) + '?v=' + Date.now();
+    const href=Paths.rawUrlForRepoPath(repoPath,contentAssetRef()) + '?v=' + Date.now();
     return `<link rel="stylesheet" href="${escAttr(href)}">`;
   }).join('\n');
 }
@@ -1814,6 +1818,7 @@ function buildManifestFromState(){
 }
 
 /* ---------- rendering ---------- */
+let previewBlobUrl=null;
 function setStatus(txt,busy){
   el('statusTxt').textContent=txt;
   el('refreshBtn').querySelector('svg').classList.toggle('spin',!!busy);
@@ -1905,7 +1910,7 @@ function rewritePreviewUrls(html){
   const dir=mediaDir();       // e.g. 'docs/assets/media'
   if(!prefix || !dir || prefix.includes('{path}') || prefix.includes('{file}')) return html;
   const encodedDir=dir.split('/').map(encodeURIComponent).join('/');
-  const rawBase=`https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(state.workBranch)}/${encodedDir}/`;
+  const rawBase=`https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(contentAssetRef())}/${encodedDir}/`;
   const escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   const version=Date.now();
   return html.replace(new RegExp(`(src=["'])${escRe(prefix)}([^"']+)(["'])`,'gi'),(m,start,rest,end)=>{
@@ -1978,42 +1983,112 @@ function updatePreviewModeButtons(){
   fragBtn.classList.toggle('active',state.previewMode==='fragment');
   pageBtn.classList.toggle('active',state.previewMode==='page');
 }
-function buildFragmentPreview(f){
+
+function previewShell(body,{title='GitCMS Preview',extraHead=''}={}){
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
-    ${previewCssTags()}
+    ${extraHead}
     <style>
       html,body{min-height:100%;margin:0}
-      body{font-family:system-ui,sans-serif;color:#1a1a1a;padding:24px;box-sizing:border-box}
+      body{font-family:system-ui,sans-serif;color:#1a1a1a;padding:24px;box-sizing:border-box;background:#fff}
       img{max-width:100%;height:auto}
       *{box-sizing:border-box}
-    </style></head>
-    <body>${rewritePreviewUrls(rebuildFragment(f))}</body></html>`;
+      .gitcms-preview-error{border:1px solid #f59e0b;background:#fffbeb;color:#78350f;border-radius:10px;padding:14px 16px;line-height:1.45}
+      .gitcms-preview-error h2{margin:0 0 8px;font-size:18px}
+      .gitcms-preview-error pre{white-space:pre-wrap;font-size:12px;overflow:auto}
+    </style>
+    <title>${esc(title)}</title></head><body>${body}</body></html>`;
 }
-function buildPagePreview(f){
-  const fileRec=state.files.get(f.path);
-  if(!fileRec) return buildFragmentPreview(f);
 
-  let page=fileRec.content;
+function previewErrorDoc(title,message,details=''){
+  return previewShell(
+    `<div class="gitcms-preview-error"><h2>${esc(title)}</h2><p>${esc(message)}</p>${details?`<pre>${esc(details)}</pre>`:''}</div>`,
+    {title}
+  );
+}
+
+function buildFragmentPreview(f){
   try{
-    page=replaceFragment(page,f);
+    if(!f) return previewErrorDoc('No fragment selected','Select a fragment to preview it.');
+    return previewShell(rewritePreviewUrls(rebuildFragment(f)),{
+      title:`Preview ${f.id}`,
+      extraHead:previewCssTags()
+    });
   }catch(e){
-    return `<!DOCTYPE html><html><body style="font-family:system-ui;padding:24px;color:#1a1a1a">
-      <h2>Page preview failed</h2>
-      <p>${esc(e.message)}</p>
-    </body></html>`;
+    console.error('Fragment preview failed',e);
+    return previewErrorDoc('Fragment preview failed',e.message||String(e));
   }
+}
 
-  page=rewriteFullPageAssetUrls(page,f.path);
+function buildPagePreview(f){
+  try{
+    if(!f) return previewErrorDoc('No fragment selected','Select a fragment to preview it.');
+    const fileRec=state.files.get(f.path);
+    if(!fileRec) return buildFragmentPreview(f);
 
-  // Keep scripts inert even if the iframe sandbox changes later.
-  page=page.replace(/<script\b/gi,'<script type="text/plain" data-gitcms-disabled');
+    let page=fileRec.content;
+    try{
+      page=replaceFragment(page,f);
+    }catch(e){
+      return previewErrorDoc('Page preview failed',e.message||String(e),'Falling back to Fragment mode usually still works.');
+    }
 
-  return page;
+    page=rewriteFullPageAssetUrls(page,f.path);
+
+    // Keep scripts inert even if the iframe sandbox changes later.
+    page=page.replace(/<script\b/gi,'<script type="text/plain" data-gitcms-disabled');
+
+    // Add a small safety style and selected-fragment outline without depending on site CSS.
+    page=page.replace('</head>', `<style>
+      img{max-width:100%;height:auto}
+      [data-fragment="${escAttr(f.id)}"], #${escAttr(f.id)}{outline:2px dashed rgba(37,99,235,.55);outline-offset:6px}
+    </style></head>`);
+
+    return page;
+  }catch(e){
+    console.error('Page preview failed',e);
+    return previewErrorDoc('Page preview failed',e.message||String(e));
+  }
+}
+
+function setPreviewDocument(html){
+  const frame=el('preview');
+  if(!frame) return;
+
+  try{
+    if(previewBlobUrl){
+      URL.revokeObjectURL(previewBlobUrl);
+      previewBlobUrl=null;
+    }
+
+    const blob=new Blob([html],{type:'text/html'});
+    previewBlobUrl=URL.createObjectURL(blob);
+
+    // Clear srcdoc so browser does not prefer stale srcdoc over blob URL.
+    frame.removeAttribute('srcdoc');
+    frame.src=previewBlobUrl;
+  }catch(e){
+    console.error('Blob preview failed, falling back to srcdoc',e);
+    frame.removeAttribute('src');
+    frame.srcdoc=html;
+  }
 }
 
 function updatePreview(f){
   updatePreviewModeButtons();
-  el('preview').srcdoc = state.previewMode==='page' ? buildPagePreview(f) : buildFragmentPreview(f);
+
+  try{
+    // Keep the active fragment synced before building preview.
+    if(f && state.activeId===f.id && el('htmlArea')){
+      f.innerHTML=el('htmlArea').value;
+      f.label=(el('edLabel').value.trim()||f.id);
+    }
+
+    const html = state.previewMode==='page' ? buildPagePreview(f) : buildFragmentPreview(f);
+    setPreviewDocument(html);
+  }catch(e){
+    console.error('Preview update failed',e);
+    setPreviewDocument(previewErrorDoc('Preview update failed',e.message||String(e)));
+  }
 }
 
 function updateUnsavedBar(){

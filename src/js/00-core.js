@@ -23,7 +23,7 @@ const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_w
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API='https://api.github.com';
-const GITCMS_VERSION='1.1.4-content-tree-pinned-write';
+const GITCMS_VERSION='1.1.7-preview-blob';
 const CONFIG_PATH='gitcms.config.json';
 const DEFAULT_MEDIA_DIR='assets/media';
 const DEFAULT_MANIFEST_PATH='fragments.json';
@@ -416,6 +416,10 @@ function mediaPrefix(){
   return Paths.normalizePublicPrefix(raw,mediaDir());
 }
 
+function contentAssetRef(){
+  return state.contentTree && state.contentTree.commitSha ? state.contentTree.commitSha : state.workBranch;
+}
+
 function previewCssList(){
   const p=gitcmsConfig && gitcmsConfig.preview;
   if(!p || typeof p!=='object') return [];
@@ -426,13 +430,13 @@ function publicPathToRepoPath(publicPath){
   return Paths.publicPathToRepoPath(publicPath);
 }
 function rawUrlForRepoPath(path){
-  return Paths.rawUrlForRepoPath(path,state.workBranch);
+  return Paths.rawUrlForRepoPath(path,contentAssetRef());
 }
 function previewCssTags(){
   if(!state.owner || !state.repo) return '';
   return previewCssList().map(path=>{
     const repoPath=Paths.publicPathToRepoPath(path);
-    const href=Paths.rawUrlForRepoPath(repoPath,state.workBranch) + '?v=' + Date.now();
+    const href=Paths.rawUrlForRepoPath(repoPath,contentAssetRef()) + '?v=' + Date.now();
     return `<link rel="stylesheet" href="${escAttr(href)}">`;
   }).join('\n');
 }
