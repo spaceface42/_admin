@@ -5,7 +5,7 @@ A zero-backend GitHub CMS admin for editing HTML fragments in a separate content
 Current version:
 
 ```txt
-1.1.63-login-copy-fix
+1.1.72-publish-snapshot-direct
 ```
 
 ---
@@ -214,3 +214,20 @@ state is still a mutable global object behind a thin Store wrapper
 fragment parsing is regex/depth based and should stay heavily tested
 future releases should use clean release labels, not debug labels
 ```
+
+---
+
+## Publish snapshots
+
+After a successful publish, GitCMS creates a lightweight Git tag in the content/site
+repository:
+
+```txt
+snapshot-YYYY-MM-DD-HHMMSS
+```
+
+The tag points to the same commit that was just published to the live branch.
+
+This is intentionally wired directly into the real publish success path in
+`src/js/12-publish.js`. Do not implement publish snapshots by wrapping or hijacking
+button click handlers.

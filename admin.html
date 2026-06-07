@@ -2416,7 +2416,7 @@ const LS_REPO = 'gitcms_repo',
 // The GitHub token is kept in sessionStorage only and cleared when the browser
 // session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.63-login-copy-fix';
+const GITCMS_VERSION = '1.1.72-publish-snapshot-direct';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -5955,6 +5955,61 @@ function adminVersionStatus({ currentVersion, expectedVersion }) {
 })();
 
 /* ---------- publish ---------- */
+const SNAPSHOT_TAG_PREFIX = 'snapshot-';
+
+function snapshotPad(n) {
+  return String(n).padStart(2, '0');
+}
+
+function snapshotTimestamp(date = new Date()) {
+  return (
+    date.getFullYear() +
+    '-' +
+    snapshotPad(date.getMonth() + 1) +
+    '-' +
+    snapshotPad(date.getDate()) +
+    '-' +
+    snapshotPad(date.getHours()) +
+    snapshotPad(date.getMinutes()) +
+    snapshotPad(date.getSeconds())
+  );
+}
+
+function snapshotTagName(date = new Date()) {
+  return SNAPSHOT_TAG_PREFIX + snapshotTimestamp(date);
+}
+
+async function createSnapshotTagForPublish(sha) {
+  if (!sha) throw new Error('Cannot create snapshot without a published commit SHA.');
+  let lastError = null;
+
+  for (let i = 0; i < 5; i++) {
+    const base = snapshotTagName();
+    const tagName = i === 0 ? base : base + '-' + (i + 1);
+
+    try {
+      await GitHubApi.request(GitHubApi.repoPath('/git/refs'), {
+        method: 'POST',
+        body: {
+          ref: 'refs/tags/' + tagName,
+          sha
+        }
+      });
+      return tagName;
+    } catch (e) {
+      lastError = e;
+      if (e.status !== 422) throw e;
+      await sleep(1000);
+    }
+  }
+
+  throw lastError || new Error('Could not create snapshot tag.');
+}
+
+async function createSnapshotAfterPublishResult(publishResult) {
+  if (!publishResult || !publishResult.published || !publishResult.sha) return null;
+  return createSnapshotTagForPublish(publishResult.sha);
+}
 let publishInFlight = false;
 el('publishBtn').onclick = openPublishModal;
 el('pubCancel').onclick = () => el('pubModal').classList.remove('show');
@@ -6076,10 +6131,28 @@ async function doPublish() {
     }
 
     btn.textContent = 'Publishing…';
-    await publishContentToMain();
+    const publishResult = await publishContentToMain();
+    let snapshotTag = null;
+    if (publishResult && publishResult.published && publishResult.sha) {
+      try {
+        snapshotTag = await createSnapshotAfterPublishResult(publishResult);
+      } catch (snapshotErr) {
+        console.warn('Snapshot creation after publish failed', snapshotErr);
+        toast(
+          'Published, but snapshot was not created: ' +
+            GitHubErrors.githubErrorMessage(snapshotErr, { action: 'Create snapshot' }),
+          'err'
+        );
+      }
+    }
 
     el('pubModal').classList.remove('show');
-    toast('Published — main now matches content', 'ok');
+    toast(
+      snapshotTag
+        ? 'Published — main now matches content. Snapshot: ' + snapshotTag
+        : 'Published — main now matches content',
+      'ok'
+    );
     await loadAll();
   } catch (e) {
     const conflict = PublishUtils.publishConflictInfo(e, {
@@ -6772,7 +6845,7 @@ async function downloadBackup() {
       'metadata.json',
       JSON.stringify(
         {
-          version: '1.1.63-login-copy-fix',
+          version: '1.1.72-publish-snapshot-direct',
           repo: `${state.owner}/${state.repo}`,
           branch: state.workBranch,
           commitSha: snapshot.commitSha || '',
