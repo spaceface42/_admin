@@ -11,9 +11,9 @@ test('built admin.html is standalone with inlined CSS and JS', () => {
   assert.doesNotMatch(html, /src=["']\.\/admin\.js["']/);
 });
 
-test('built docs/admin.html is standalone and matches root admin.html', () => {
+test('built docs/index.html is standalone and matches root admin.html', () => {
   const root = readFileSync(new URL('../admin.html', import.meta.url), 'utf8');
-  const docs = readFileSync(new URL('../docs/admin.html', import.meta.url), 'utf8');
+  const docs = readFileSync(new URL('../docs/index.html', import.meta.url), 'utf8');
 
   assert.equal(docs, root);
   assert.doesNotMatch(docs, /href=["']\.\/admin\.css["']/);

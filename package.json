@@ -1,10 +1,10 @@
 {
   "name": "gitcms-admin",
-  "version": "1.1.84-snapshot-delete-date-colors",
+  "version": "1.1.87-snapshot-history-numbering",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build-admin.mjs",
+    "build": "node build-admin.mjs && node scripts/sync-docs-index.mjs",
     "check": "node --check src/admin.js",
     "test": "node --test",
     "lint": "eslint src/js/**/*.js src/lib/**/*.mjs tests/**/*.mjs build-admin.mjs",

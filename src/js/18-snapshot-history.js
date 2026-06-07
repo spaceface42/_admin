@@ -58,6 +58,17 @@ function snapshotHistoryApplyColor(card, tag) {
     'linear-gradient(135deg, hsl(' + hue + ' 55% 18% / 0.88), hsl(' + hue + ' 40% 10% / 0.52))';
 }
 
+function snapshotHistoryNumberTags(tags) {
+  const sortedOldestFirst = [...tags].sort((a, b) => a.name.localeCompare(b.name));
+  const byName = new Map();
+
+  sortedOldestFirst.forEach((tag, index) => {
+    byName.set(tag.name, index + 1);
+  });
+
+  return byName;
+}
+
 function ensureSnapshotHistoryButton() {
   let btn = document.getElementById('snapshotHistoryBtn');
   if (btn) return btn;
@@ -228,12 +239,18 @@ function snapshotHistoryRender(tags) {
   }
 
   list.innerHTML = '';
+  const snapshotNumberByName = snapshotHistoryNumberTags(tags);
+
   for (const tag of tags) {
     const card = document.createElement('div');
     card.className = 'media-card';
     snapshotHistoryApplyColor(card, tag);
+    const snapshotNumber = snapshotNumberByName.get(tag.name) || 0;
     card.innerHTML = `
-      <div class="media-name" style="font-size:15px;color:var(--txt)">${esc(snapshotHistoryDisplayDate(tag.name))}</div>
+      <div class="snapshot-history-head" style="display:flex;align-items:center;gap:10px;padding:8px 9px 2px">
+        <div class="snapshot-history-number" style="min-width:34px;height:34px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);font-family:var(--mono);font-size:15px;font-weight:800;color:var(--txt)">${esc(String(snapshotNumber))}</div>
+        <div class="media-name" style="font-size:15px;color:var(--txt);padding:0;border-top:0">${esc(snapshotHistoryDisplayDate(tag.name))}</div>
+      </div>
       <div class="media-path mono">${esc(tag.name)}</div>
       <div class="media-path mono">${esc(snapshotHistoryShortSha(tag.sha))}</div>
       <div class="media-actions">

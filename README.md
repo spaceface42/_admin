@@ -5,7 +5,7 @@ A zero-backend GitHub CMS admin for editing HTML fragments in a separate content
 Current version:
 
 ```txt
-1.1.84-snapshot-delete-date-colors
+1.1.87-snapshot-history-numbering
 ```
 
 ---
@@ -36,10 +36,10 @@ The build generates:
 
 ```txt
 admin.html
-docs/admin.html
+docs/index.html
 ```
 
-`docs/admin.html` is intended for GitHub Pages when Pages publishes from `docs/`.
+`docs/index.html` is intended for GitHub Pages when Pages publishes from `docs/`.
 
 ---
 
@@ -66,7 +66,7 @@ src/lib/*.mjs              shared utility source of truth
 src/js/*.js                browser app logic
 build-admin.mjs            generates src/admin.js
 admin.html                 standalone local/admin artifact
-docs/admin.html            GitHub Pages artifact
+docs/index.html            GitHub Pages artifact
 ```
 
 ---
@@ -186,7 +186,7 @@ main branch    = published live site
 manifest-first loading for HTML fragments
 direct Contents API for media thumbnails
 single-file admin build
-docs/admin.html copied during build
+docs/index.html copied during build
 shared utility logic generated from src/lib/*.mjs
 ```
 
@@ -393,3 +393,56 @@ Each card gets a deterministic accent color generated from the timestamp.
 Snapshot cards also include a Delete action. Delete removes only the selected
 `snapshot-*` Git tag. It does not move `content`, does not move `main`, and does
 not change site content.
+
+---
+
+## Docs deployment output
+
+The admin build keeps the hosted output minimal:
+
+```txt
+admin.html        root local admin file
+docs/index.html   hosted GitHub Pages admin entry
+```
+
+The build script runs:
+
+```txt
+node scripts/sync-docs-index.mjs
+```
+
+This copies root `admin.html` to `docs/index.html` and removes every other file from
+`docs/`.
+
+The root `_site/` folder is intentionally not touched. It remains available as a
+starter/site template.
+
+---
+
+## Docs output test rule
+
+`docs/admin.html` is intentionally not generated.
+
+The hosted admin entry is:
+
+```txt
+docs/index.html
+```
+
+Tests should compare root `admin.html` against `docs/index.html`, not
+`docs/admin.html`.
+
+---
+
+## Snapshot numbering
+
+History snapshot cards are numbered by age:
+
+```txt
+oldest snapshot = 1
+newest snapshot = total snapshot count
+```
+
+Example: if there are 15 snapshots, the newest card shows number 15.
+
+The visual number is rendered on each History card beside the larger readable date.
