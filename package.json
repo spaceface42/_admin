@@ -1,6 +1,6 @@
 {
   "name": "gitcms-admin",
-  "version": "1.1.72-publish-snapshot-direct",
+  "version": "1.1.83-rollback-auto-refresh",
   "private": true,
   "type": "module",
   "scripts": {

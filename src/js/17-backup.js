@@ -64,7 +64,7 @@ async function downloadBackup() {
       'metadata.json',
       JSON.stringify(
         {
-          version: '1.1.72-publish-snapshot-direct',
+          version: '1.1.83-rollback-auto-refresh',
           repo: `${state.owner}/${state.repo}`,
           branch: state.workBranch,
           commitSha: snapshot.commitSha || '',

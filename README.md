@@ -5,7 +5,7 @@ A zero-backend GitHub CMS admin for editing HTML fragments in a separate content
 Current version:
 
 ```txt
-1.1.72-publish-snapshot-direct
+1.1.83-rollback-auto-refresh
 ```
 
 ---
@@ -231,3 +231,148 @@ The tag points to the same commit that was just published to the live branch.
 This is intentionally wired directly into the real publish success path in
 `src/js/12-publish.js`. Do not implement publish snapshots by wrapping or hijacking
 button click handlers.
+
+---
+
+## Snapshot history and rollback
+
+The admin has a History button that lists tags matching:
+
+```txt
+snapshot-*
+```
+
+Rollback behavior:
+
+```txt
+1. create no extra rollback snapshot tag safety tag
+2. move content branch to selected snapshot commit
+3. move main branch to selected snapshot commit
+4. clear cached write state
+5. reload content
+```
+
+Snapshot tags are created automatically after a successful publish.
+
+---
+
+## Snapshot history modal implementation note
+
+Snapshot history uses the standard modal structure:
+
+```html
+<div class="modal-bg" id="snapshotHistoryModal">
+  <div class="modal media-modal">...</div>
+</div>
+```
+
+The History module must not create the modal during startup, because the single-file build
+can execute JavaScript before late static modal markup has been parsed. The modal is
+created or reused only when History is opened.
+
+---
+
+## Rollback cache pinning
+
+After rollback, GitHub branch-ref reads can lag briefly even when the ref update
+request has already succeeded. The rollback flow therefore pins both branches in
+`LastWriteCommitCache` to the selected snapshot SHA before calling `loadAll()`.
+
+Do this:
+
+```txt
+update content ref
+update main ref
+pin content + main to rollback SHA
+clear content tree
+reload
+```
+
+Do not clear the write cache immediately after rollback, because that can make the
+editor reload a stale branch ref.
+
+---
+
+## Rollback does not create snapshots
+
+Rollback is a branch ref move only:
+
+```txt
+move content branch to selected snapshot SHA
+move main branch to selected snapshot SHA
+pin cache to selected snapshot SHA
+reload editor
+```
+
+It does not create another `snapshot-*` tag. This keeps the tag list clean and makes
+snapshots represent published states only.
+
+---
+
+## History button binding fallback
+
+The History button has two bindings:
+
+```txt
+1. normal JS setup/delegated click binding
+2. inline onclick fallback calling window.openSnapshotHistory()
+```
+
+The Snapshot History modal is kept in the static HTML before other modals, not appended
+after the generated script. Runtime modal creation remains only as a fallback.
+
+---
+
+## History runtime modal only
+
+The Snapshot History modal is not stored as static HTML in `src/index.html`.
+
+Reason:
+
+```txt
+static modal inserts caused duplicate/malformed closing divs
+runtime creation avoids index.html parser failures
+```
+
+The History button has an inline fallback:
+
+```html
+onclick="openSnapshotHistory(); return false;"
+```
+
+and `src/js/18-snapshot-history.js` exposes:
+
+```js
+window.openSnapshotHistory = openSnapshotHistory;
+```
+
+---
+
+## History runtime clean implementation
+
+Snapshot History is runtime-only:
+
+```txt
+src/index.html contains no Snapshot History modal
+src/js/18-snapshot-history.js creates the button/modal at runtime
+rollback moves content + main to the selected snapshot SHA
+rollback pins LastWriteCommitCache to that SHA before reload
+rollback does not create snapshot-before-rollback tags
+```
+
+This avoids malformed static modal markup in `src/index.html`.
+
+---
+
+## Rollback automatic editor refresh
+
+After moving both branches to the selected snapshot SHA, Snapshot History automatically
+reloads the editor twice:
+
+```txt
+1. immediate reload pinned to selected snapshot SHA
+2. delayed reload after GitHub branch refs have settled
+```
+
+This mirrors clicking the normal Refresh button manually after rollback, so the editor
+shows the rolled-back content without extra user action.
