@@ -2277,7 +2277,14 @@ function choosePinnedCommit({ branch, workBranch, preferLastWrite = true, cached
   };
 }
 
-function buildContentTreeSnapshot({ branch, commitSha, treeSha, source, treeResponse, treeLoaded = true }) {
+function buildContentTreeSnapshot({
+  branch,
+  commitSha,
+  treeSha,
+  source,
+  treeResponse,
+  treeLoaded = true
+}) {
   return {
     branch,
     commitSha,
@@ -2363,7 +2370,7 @@ const LS_REPO = 'gitcms_repo',
 // The GitHub token is kept in sessionStorage only and cleared when the browser
 // session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.58-shared-fragment-parser';
+const GITCMS_VERSION = '1.1.59-format-fix';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -2428,7 +2435,6 @@ const TokenStorage = Object.freeze({
     localStorage.removeItem(LS_TOKEN);
   }
 });
-
 
 const LastWriteCommitCache = Object.freeze({
   ttlMs: 30 * 60 * 1000,
@@ -6170,7 +6176,10 @@ function diagnosticsData() {
     'Content tree source': state.contentTree ? state.contentTree.source || 'unknown' : 'not loaded',
     'Pinned last write SHA': LastWriteCommitCache.get(state.workBranch) || 'none',
     'Content tree SHA': state.contentTree ? state.contentTree.treeSha : 'not loaded',
-    'File read mode': state.contentTree && state.contentTree.treeLoaded === false ? 'Manifest-first Contents API reads' : 'Git data API blob read',
+    'File read mode':
+      state.contentTree && state.contentTree.treeLoaded === false
+        ? 'Manifest-first Contents API reads'
+        : 'Git data API blob read',
     'Manifest path': state.manifestPath || DEFAULT_MANIFEST_PATH,
     'Manifest loaded': state.manifest ? 'yes' : 'no',
     'Config path': CONFIG_PATH,

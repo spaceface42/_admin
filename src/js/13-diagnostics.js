@@ -46,7 +46,10 @@ function diagnosticsData() {
     'Content tree source': state.contentTree ? state.contentTree.source || 'unknown' : 'not loaded',
     'Pinned last write SHA': LastWriteCommitCache.get(state.workBranch) || 'none',
     'Content tree SHA': state.contentTree ? state.contentTree.treeSha : 'not loaded',
-    'File read mode': state.contentTree && state.contentTree.treeLoaded === false ? 'Manifest-first Contents API reads' : 'Git data API blob read',
+    'File read mode':
+      state.contentTree && state.contentTree.treeLoaded === false
+        ? 'Manifest-first Contents API reads'
+        : 'Git data API blob read',
     'Manifest path': state.manifestPath || DEFAULT_MANIFEST_PATH,
     'Manifest loaded': state.manifest ? 'yes' : 'no',
     'Config path': CONFIG_PATH,

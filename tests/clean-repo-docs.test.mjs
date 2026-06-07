@@ -20,8 +20,8 @@ test('repo keeps markdown documentation centralized', () => {
   const root = dirname(fileURLToPath(import.meta.url));
   const repoRoot = join(root, '..');
   const markdown = walk(repoRoot)
-    .filter(path => path.endsWith('.md'))
-    .map(path => relative(repoRoot, path))
+    .filter((path) => path.endsWith('.md'))
+    .map((path) => relative(repoRoot, path))
     .sort();
 
   assert.deepEqual(markdown, ['README.md']);

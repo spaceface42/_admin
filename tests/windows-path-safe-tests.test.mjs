@@ -19,8 +19,13 @@ function walk(dir) {
 test('tests avoid URL.pathname filesystem paths for Windows compatibility', () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
   const files = walk(root)
-    .filter(path => path.endsWith('.mjs'))
-    .filter(path => path.includes(`${join('tests')}${join('').includes('\\') ? '\\' : '/'}`) || path.includes('/tests/') || path.includes('\\tests\\'));
+    .filter((path) => path.endsWith('.mjs'))
+    .filter(
+      (path) =>
+        path.includes(`${join('tests')}${join('').includes('\\') ? '\\' : '/'}`) ||
+        path.includes('/tests/') ||
+        path.includes('\\tests\\')
+    );
 
   for (const file of files) {
     const source = readFileSync(file, 'utf8');

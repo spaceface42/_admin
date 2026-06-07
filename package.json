@@ -1,6 +1,6 @@
 {
   "name": "gitcms-admin",
-  "version": "1.1.58-shared-fragment-parser",
+  "version": "1.1.59-format-fix",
   "private": true,
   "type": "module",
   "scripts": {

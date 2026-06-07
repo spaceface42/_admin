@@ -115,7 +115,6 @@ test('dirtyFragmentIdsForFile returns dirty ids for one file', () => {
   assert.deepEqual(dirtyFragmentIdsForFile({ fragments: ['hero', 'intro'] }, map), ['hero']);
 });
 
-
 test('applyEditorValues preserves fields that are not supplied', () => {
   const next = applyEditorValues(
     {

@@ -52,7 +52,14 @@ export function choosePinnedCommit({ branch, workBranch, preferLastWrite = true,
   };
 }
 
-export function buildContentTreeSnapshot({ branch, commitSha, treeSha, source, treeResponse, treeLoaded = true }) {
+export function buildContentTreeSnapshot({
+  branch,
+  commitSha,
+  treeSha,
+  source,
+  treeResponse,
+  treeLoaded = true
+}) {
   return {
     branch,
     commitSha,

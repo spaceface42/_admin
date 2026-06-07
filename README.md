@@ -5,7 +5,7 @@ A zero-backend GitHub CMS admin for editing HTML fragments in a separate content
 Current version:
 
 ```txt
-1.1.58-shared-fragment-parser
+1.1.59-format-fix
 ```
 
 ---
@@ -191,7 +191,6 @@ shared utility logic generated from src/lib/*.mjs
 ```
 
 Do not add scattered release-note markdown files. Keep documentation centralized here unless a separate document is clearly necessary.
-
 
 ---
 

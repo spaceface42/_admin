@@ -66,7 +66,6 @@ test('token storage uses sessionStorage, not direct localStorage token writes', 
   assert.doesNotMatch(prefill, /localStorage\.getItem\(LS_TOKEN/);
 });
 
-
 test('fragment parser browser files delegate to shared FragmentParser', () => {
   const fragments = readFileSync(new URL('../src/js/02-fragments.js', import.meta.url), 'utf8');
   const commit = readFileSync(new URL('../src/js/07-commit.js', import.meta.url), 'utf8');

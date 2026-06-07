@@ -7,12 +7,18 @@ test('loadAll resolves content source before recursive tree scanning', () => {
   const js = readFileSync(new URL('../src/js/03-connect-load.js', import.meta.url), 'utf8');
 
   const loadAllIndex = js.indexOf('async function loadAll()');
-  const loadAllBody = js.slice(loadAllIndex, js.indexOf('/* Load files referenced by a manifest', loadAllIndex));
+  const loadAllBody = js.slice(
+    loadAllIndex,
+    js.indexOf('/* Load files referenced by a manifest', loadAllIndex)
+  );
 
   assert.match(loadAllBody, /resolveContentLoadSource\(\)/);
   assert.match(loadAllBody, /loadManifest\(source\.commitSha\)/);
   assert.match(loadAllBody, /tryLoadFromManifest\(workMan, source\.commitSha\)/);
-  assert.doesNotMatch(loadAllBody, /getBranchTreeSnapshot\(state\.workBranch, \{ force: true \}\);\n\s*el\('banner'\)/);
+  assert.doesNotMatch(
+    loadAllBody,
+    /getBranchTreeSnapshot\(state\.workBranch, \{ force: true \}\);\n\s*el\('banner'\)/
+  );
 });
 
 test('manifest and listed files are read through Contents API at resolved ref', () => {
