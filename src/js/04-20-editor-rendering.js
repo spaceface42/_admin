@@ -24,13 +24,9 @@ function selectFragment(id) {
 }
 
 function syncActiveFromTextarea() {
-  const f = state.frags.get(state.activeId);
-  if (!f) return;
-  f.innerHTML = el('htmlArea').value;
-  f.dirty = f.innerHTML !== f.origHTML || labelChanged(f);
-}
-function labelChanged(f) {
-  const m = state.manifest && state.manifest.find((e) => e.id === f.id);
-  const orig = m ? m.label : f.id;
-  return f.label !== orig;
+  if (!state.activeId) return;
+  Store.applyEditorValues(state.activeId, {
+    html: el('htmlArea').value,
+    label: el('edLabel').value
+  });
 }
