@@ -198,6 +198,7 @@ function validateMarkers(content, path = 'file') {
 
 export const FragmentParser = Object.freeze({
   attrGet,
+  fragmentIdFromAttrs,
   findMarkedFragments,
   extractMarkedFragment,
   replaceMarkedFragment,

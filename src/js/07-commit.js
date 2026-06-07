@@ -118,25 +118,15 @@ function replaceFragment(content, frag) {
   // Preferred replacement: marker boundary. This safely handles nested sections
   // because the editable range is defined by cms:start/cms:end comments.
   if (frag.mode === 'marker' || frag.markerId) {
-    const parts =
-      extractMarkedFragment(content, frag.markerId || frag.id) ||
-      extractMarkedFragment(content, frag.id);
-    if (!parts) {
-      throw new Error(`Fragment markers not found in file: ${frag.id}`);
-    }
-    return (
-      content.slice(0, parts.fullStart) +
-      rebuildMarkedFragmentFromParts(parts, frag.innerHTML) +
-      content.slice(parts.fullEnd)
-    );
+    return FragmentParser.replaceMarkedFragment(content, frag.markerId || frag.id, frag.innerHTML);
   }
 
   // Backward-compatible fallback for old section-based fragments.
   let matched = false;
   const out = content.replace(SECTION_RE, (whole, openTag, attrs, inner) => {
     if (matched) return whole;
-    const id = fragmentIdFromAttrs(attrs);
-    if (id === frag.id && attrsDeclareFragment(attrs)) {
+    const id = FragmentParser.fragmentIdFromAttrs(attrs);
+    if (id === frag.id && FragmentParser.attrsDeclareFragment(attrs)) {
       matched = true;
       return rebuildFragment(frag);
     }

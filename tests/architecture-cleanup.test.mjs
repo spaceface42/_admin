@@ -65,3 +65,29 @@ test('token storage uses sessionStorage, not direct localStorage token writes', 
   assert.doesNotMatch(connect, /localStorage\.setItem\(LS_TOKEN/);
   assert.doesNotMatch(prefill, /localStorage\.getItem\(LS_TOKEN/);
 });
+
+
+test('fragment parser browser files delegate to shared FragmentParser', () => {
+  const fragments = readFileSync(new URL('../src/js/02-fragments.js', import.meta.url), 'utf8');
+  const commit = readFileSync(new URL('../src/js/07-commit.js', import.meta.url), 'utf8');
+
+  assert.match(fragments, /FragmentParser\.findMarkedFragments/);
+  assert.match(fragments, /FragmentParser\.attrGet/);
+  assert.match(fragments, /FragmentParser\.attrsDeclareFragment/);
+  assert.match(fragments, /FragmentParser\.fragmentIdFromAttrs/);
+
+  assert.match(commit, /FragmentParser\.replaceMarkedFragment/);
+  assert.match(commit, /FragmentParser\.fragmentIdFromAttrs/);
+  assert.match(commit, /FragmentParser\.attrsDeclareFragment/);
+
+  for (const source of [fragments, commit]) {
+    assert.doesNotMatch(source, /function reEsc\b/);
+    assert.doesNotMatch(source, /function findTagEnd\b/);
+    assert.doesNotMatch(source, /function findFirstElement\b/);
+    assert.doesNotMatch(source, /function findMatchingClose\b/);
+    assert.doesNotMatch(source, /function attrGet\b/);
+    assert.doesNotMatch(source, /function classHasFragment\b/);
+    assert.doesNotMatch(source, /function extractMarkedFragment\b/);
+    assert.doesNotMatch(source, /function rebuildMarkedFragmentFromParts\b/);
+  }
+});
