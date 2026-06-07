@@ -347,7 +347,7 @@ const LS_REPO = 'gitcms_repo',
 // The GitHub token is kept in sessionStorage only and cleared when the browser
 // session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.59-format-fix';
+const GITCMS_VERSION = '1.1.60';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -2065,15 +2065,11 @@ function selectFragment(id) {
 }
 
 function syncActiveFromTextarea() {
-  const f = state.frags.get(state.activeId);
-  if (!f) return;
-  f.innerHTML = el('htmlArea').value;
-  f.dirty = f.innerHTML !== f.origHTML || labelChanged(f);
-}
-function labelChanged(f) {
-  const m = state.manifest && state.manifest.find((e) => e.id === f.id);
-  const orig = m ? m.label : f.id;
-  return f.label !== orig;
+  if (!state.activeId) return;
+  Store.applyEditorValues(state.activeId, {
+    html: el('htmlArea').value,
+    label: el('edLabel').value
+  });
 }
 
 /* ---------- preview rendering ---------- */
