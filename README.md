@@ -5,7 +5,7 @@ A zero-backend GitHub CMS admin for editing HTML fragments in a separate content
 Current version:
 
 ```txt
-1.1.83-rollback-auto-refresh
+1.1.84-snapshot-delete-date-colors
 ```
 
 ---
@@ -376,3 +376,20 @@ reloads the editor twice:
 
 This mirrors clicking the normal Refresh button manually after rollback, so the editor
 shows the rolled-back content without extra user action.
+
+---
+
+## Snapshot cards and deletion
+
+History snapshot cards show a larger human-readable date parsed from the tag name:
+
+```txt
+snapshot-YYYY-MM-DD-HHMMSS
+YYYY-MM-DD HH:MM:SS
+```
+
+Each card gets a deterministic accent color generated from the timestamp.
+
+Snapshot cards also include a Delete action. Delete removes only the selected
+`snapshot-*` Git tag. It does not move `content`, does not move `main`, and does
+not change site content.

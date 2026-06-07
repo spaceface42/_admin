@@ -1,6 +1,6 @@
 {
   "name": "gitcms-admin",
-  "version": "1.1.83-rollback-auto-refresh",
+  "version": "1.1.84-snapshot-delete-date-colors",
   "private": true,
   "type": "module",
   "scripts": {

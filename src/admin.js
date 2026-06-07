@@ -347,7 +347,7 @@ const LS_REPO = 'gitcms_repo',
 // The GitHub token is kept in sessionStorage only and cleared when the browser
 // session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.83-rollback-auto-refresh';
+const GITCMS_VERSION = '1.1.84-snapshot-delete-date-colors';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -4776,7 +4776,7 @@ async function downloadBackup() {
       'metadata.json',
       JSON.stringify(
         {
-          version: '1.1.83-rollback-auto-refresh',
+          version: '1.1.84-snapshot-delete-date-colors',
           repo: `${state.owner}/${state.repo}`,
           branch: state.workBranch,
           commitSha: snapshot.commitSha || '',
@@ -4902,6 +4902,51 @@ function snapshotHistoryTagNameFromRef(ref) {
 
 function snapshotHistoryShortSha(sha) {
   return sha ? sha.slice(0, 7) + '…' + sha.slice(-7) : 'unknown';
+}
+
+function snapshotHistoryParseDate(name) {
+  const m = String(name || '').match(/^snapshot-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})/);
+  if (!m) return null;
+
+  return {
+    year: m[1],
+    month: m[2],
+    day: m[3],
+    hour: m[4],
+    minute: m[5],
+    second: m[6]
+  };
+}
+
+function snapshotHistoryDisplayDate(name) {
+  const d = snapshotHistoryParseDate(name);
+  if (!d) return String(name || '');
+
+  return d.year + '-' + d.month + '-' + d.day + ' ' + d.hour + ':' + d.minute + ':' + d.second;
+}
+
+function snapshotHistoryAccentHue(name) {
+  const d = snapshotHistoryParseDate(name);
+  if (d) {
+    const seed =
+      Number(d.month) * 31 +
+      Number(d.day) * 17 +
+      Number(d.hour) * 13 +
+      Number(d.minute) * 7 +
+      Number(d.second);
+    return seed % 360;
+  }
+
+  let hash = 0;
+  for (const ch of String(name || 'snapshot')) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+  return hash;
+}
+
+function snapshotHistoryApplyColor(card, tag) {
+  const hue = snapshotHistoryAccentHue(tag.name);
+  card.style.borderColor = 'hsl(' + hue + ' 70% 55% / 0.9)';
+  card.style.background =
+    'linear-gradient(135deg, hsl(' + hue + ' 55% 18% / 0.88), hsl(' + hue + ' 40% 10% / 0.52))';
 }
 
 function ensureSnapshotHistoryButton() {
@@ -5032,6 +5077,38 @@ async function snapshotHistoryListTags() {
   return out.sort((a, b) => b.name.localeCompare(a.name));
 }
 
+async function snapshotHistoryDelete(tag) {
+  if (!snapshotHistoryRequireConnection()) return;
+
+  if (!tag || !tag.name || !tag.name.startsWith(SNAPSHOT_HISTORY_PREFIX)) {
+    snapshotHistorySetErr('Only snapshot-* tags can be deleted here.');
+    return;
+  }
+
+  const ok = confirm(
+    'Delete snapshot tag ' +
+      tag.name +
+      '?\n\nThis deletes only the Git tag. It does not change content or main.'
+  );
+  if (!ok) return;
+
+  snapshotHistorySetErr('');
+  snapshotHistorySetWarn('Deleting snapshot tag…');
+
+  try {
+    await GitHubApi.request(GitHubApi.repoPath('/git/refs/tags/' + encodeURIComponent(tag.name)), {
+      method: 'DELETE'
+    });
+
+    toast('Deleted snapshot ' + tag.name, 'ok');
+    await snapshotHistoryRefresh();
+  } catch (e) {
+    snapshotHistorySetWarn('');
+    snapshotHistorySetErr(GitHubErrors.githubErrorMessage(e, { action: 'Delete snapshot' }));
+    toast('Delete snapshot failed', 'err');
+  }
+}
+
 function snapshotHistoryRender(tags) {
   const list = document.getElementById('snapshotHistoryList');
   if (!list) return;
@@ -5045,15 +5122,19 @@ function snapshotHistoryRender(tags) {
   for (const tag of tags) {
     const card = document.createElement('div');
     card.className = 'media-card';
+    snapshotHistoryApplyColor(card, tag);
     card.innerHTML = `
-      <div class="media-name">${esc(tag.name)}</div>
+      <div class="media-name" style="font-size:15px;color:var(--txt)">${esc(snapshotHistoryDisplayDate(tag.name))}</div>
+      <div class="media-path mono">${esc(tag.name)}</div>
       <div class="media-path mono">${esc(snapshotHistoryShortSha(tag.sha))}</div>
       <div class="media-actions">
         <a class="media-action copy" href="${escAttr(snapshotHistoryTagUrl(tag.name))}" target="_blank" rel="noopener">Open</a>
-        <button class="media-action delete" type="button">Rollback</button>
+        <button class="media-action" type="button" data-action="rollback">Rollback</button>
+        <button class="media-action delete" type="button" data-action="delete">Delete</button>
       </div>`;
 
-    card.querySelector('button').onclick = () => snapshotHistoryRollback(tag);
+    card.querySelector('[data-action="rollback"]').onclick = () => snapshotHistoryRollback(tag);
+    card.querySelector('[data-action="delete"]').onclick = () => snapshotHistoryDelete(tag);
     list.appendChild(card);
   }
 }
