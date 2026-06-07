@@ -1,6 +1,6 @@
 {
   "name": "gitcms-admin",
-  "version": "1.1.48-copy-admin-to-docs",
+  "version": "1.1.50-inline-build-output-fix",
   "private": true,
   "type": "module",
   "scripts": {

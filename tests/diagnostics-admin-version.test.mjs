@@ -1,9 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  adminVersionStatus,
-  inferGitHubPagesAdminRepo
-} from '../src/lib/diagnostics-utils.mjs';
+import { adminVersionStatus, inferGitHubPagesAdminRepo } from '../src/lib/diagnostics-utils.mjs';
 
 test('inferGitHubPagesAdminRepo infers project repo from GitHub Pages URL', () => {
   assert.equal(
@@ -34,10 +31,7 @@ test('inferGitHubPagesAdminRepo returns empty when repo cannot be inferred', () 
 });
 
 test('adminVersionStatus compares current and expected versions', () => {
-  assert.equal(
-    adminVersionStatus({ currentVersion: '1.1.41', expectedVersion: '1.1.41' }),
-    'ok'
-  );
+  assert.equal(adminVersionStatus({ currentVersion: '1.1.41', expectedVersion: '1.1.41' }), 'ok');
 
   assert.equal(
     adminVersionStatus({ currentVersion: '1.1.40', expectedVersion: '1.1.41' }),

@@ -1,9 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  diagnosticsBadgeText,
-  diagnosticsRowMeta
-} from '../src/lib/diagnostics-utils.mjs';
+import { diagnosticsBadgeText, diagnosticsRowMeta } from '../src/lib/diagnostics-utils.mjs';
 
 test('diagnosticsBadgeText maps status classes to labels', () => {
   assert.equal(diagnosticsBadgeText('ok'), 'OK');

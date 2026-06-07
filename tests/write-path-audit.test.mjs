@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { contentsPath, updateRefPath } from '../src/lib/github-api-utils.mjs';
 
-const githubPath = path => String(path).replace(/^\/+|\/+$/g, '').split('/').map(encodeURIComponent).join('/');
+const githubPath = (path) =>
+  String(path)
+    .replace(/^\/+|\/+$/g, '')
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/');
 
 test('CMS write SHA reads explicitly use content branch ref', () => {
   const html = contentsPath({ path: 'docs/index.html', ref: 'content', githubPath });

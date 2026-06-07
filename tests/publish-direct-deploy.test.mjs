@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  effectivePublishSha
-} from '../src/lib/publish-utils.mjs';
+import { effectivePublishSha } from '../src/lib/publish-utils.mjs';
 
 test('effectivePublishSha prefers pinned content SHA', () => {
   assert.equal(

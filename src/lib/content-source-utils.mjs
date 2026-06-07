@@ -63,7 +63,7 @@ export function buildContentTreeSnapshot({ branch, commitSha, treeSha, source, t
 }
 
 export function findBlobInTree(tree, path) {
-  return (tree || []).find(item => item && item.path === path && item.type === 'blob') || null;
+  return (tree || []).find((item) => item && item.path === path && item.type === 'blob') || null;
 }
 
 export function normalizeBlobContent(content) {

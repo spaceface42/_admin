@@ -87,12 +87,10 @@ export const DEFAULT_EDITOR_SNIPPETS = Object.freeze([
 ]);
 
 export function configEditorSnippets(config) {
-  const editor = config && typeof config === 'object' && !Array.isArray(config)
-    ? config.editor
-    : null;
-  const snippets = editor && typeof editor === 'object' && !Array.isArray(editor)
-    ? editor.snippets
-    : null;
+  const editor =
+    config && typeof config === 'object' && !Array.isArray(config) ? config.editor : null;
+  const snippets =
+    editor && typeof editor === 'object' && !Array.isArray(editor) ? editor.snippets : null;
   return Array.isArray(snippets) ? snippets : [];
 }
 
@@ -139,11 +137,9 @@ export function renderSnippetTemplate(template, selection = '') {
       const value = selected || fallback;
       const items = String(value || '')
         .split(/\n+/)
-        .map(item => item.trim())
+        .map((item) => item.trim())
         .filter(Boolean);
-      return items.length
-        ? items.map(item => `  <li>${escapeHtml(item)}</li>`).join('\n')
-        : '';
+      return items.length ? items.map((item) => `  <li>${escapeHtml(item)}</li>`).join('\n') : '';
     }
   );
 
@@ -158,7 +154,7 @@ export function renderSnippetTemplate(template, selection = '') {
 
 export function snippetTemplate(type, selection = '', config = null) {
   const id = String(type || '').trim();
-  const snippet = editorSnippetDefinitions(config).find(item => item.id === id);
+  const snippet = editorSnippetDefinitions(config).find((item) => item.id === id);
   return snippet ? renderSnippetTemplate(snippet.html, selection) : '';
 }
 
@@ -185,7 +181,9 @@ export function computeCursorInsertion(value, selectionStart, selectionEnd, text
 
 export function resetFragmentValues(fragment, manifest) {
   if (!fragment) return null;
-  const entry = Array.isArray(manifest) ? manifest.find(item => item && item.id === fragment.id) : null;
+  const entry = Array.isArray(manifest)
+    ? manifest.find((item) => item && item.id === fragment.id)
+    : null;
   return {
     ...fragment,
     innerHTML: fragment.origHTML,

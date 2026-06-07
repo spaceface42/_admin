@@ -56,7 +56,12 @@ test('mediaUsageList finds URL and filename references', () => {
     mediaUrl: 'assets/media/photo.jpg',
     filename: 'photo.jpg',
     fragments: [
-      { id: 'hero', label: 'Hero', path: 'docs/index.html', innerHTML: '<img src="assets/media/photo.jpg">' },
+      {
+        id: 'hero',
+        label: 'Hero',
+        path: 'docs/index.html',
+        innerHTML: '<img src="assets/media/photo.jpg">'
+      },
       { id: 'intro', label: 'Intro', path: 'docs/index.html', innerHTML: '<p>photo.jpg</p>' },
       { id: 'cta', label: 'CTA', path: 'docs/index.html', innerHTML: '<p>none</p>' }
     ]

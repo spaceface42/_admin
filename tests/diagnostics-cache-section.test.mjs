@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  diagnosticsStatusClass,
-  diagnosticsTextSections
-} from '../src/lib/diagnostics-utils.mjs';
+import { diagnosticsStatusClass, diagnosticsTextSections } from '../src/lib/diagnostics-utils.mjs';
 
 test('diagnosticsTextSections formats titled sections', () => {
   const text = diagnosticsTextSections([
     { title: 'Runtime', data: { Version: '1.0' } },
-    { title: 'Cache / content source', data: { 'Cache status': 'ok — loaded content matches branch ref' } }
+    {
+      title: 'Cache / content source',
+      data: { 'Cache status': 'ok — loaded content matches branch ref' }
+    }
   ]);
 
   assert.match(text, /Runtime\n-------/);
@@ -18,6 +18,12 @@ test('diagnosticsTextSections formats titled sections', () => {
 });
 
 test('diagnosticsStatusClass marks cache warnings and ok states', () => {
-  assert.equal(diagnosticsStatusClass('Cache status', 'warning — cached content SHA differs'), 'warn');
-  assert.equal(diagnosticsStatusClass('Cache status', 'ok — loaded content matches branch ref'), 'ok');
+  assert.equal(
+    diagnosticsStatusClass('Cache status', 'warning — cached content SHA differs'),
+    'warn'
+  );
+  assert.equal(
+    diagnosticsStatusClass('Cache status', 'ok — loaded content matches branch ref'),
+    'ok'
+  );
 });

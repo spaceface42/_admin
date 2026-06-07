@@ -19,7 +19,7 @@ const PublishUtils = (() => {
     const files = compare && Array.isArray(compare.files) ? compare.files : [];
     const ahead = compare && typeof compare.ahead_by === 'number' ? compare.ahead_by : null;
     const total = files.length;
-    const shown = files.slice(0, limit).map(file => ({
+    const shown = files.slice(0, limit).map((file) => ({
       status: file.status || 'changed',
       label: statusLabel(file.status),
       path: displayFilePath(file)
@@ -51,7 +51,8 @@ const PublishUtils = (() => {
   function publishBlockedReason(compare) {
     const summary = summarizeCompare(compare);
     if (!summary.hasCompare) return 'Changed files could not be loaded. Refresh and try again.';
-    if (!canPublishCompare(compare)) return 'Nothing to publish. The content branch is already up to date with the live branch.';
+    if (!canPublishCompare(compare))
+      return 'Nothing to publish. The content branch is already up to date with the live branch.';
     return '';
   }
 
@@ -81,8 +82,10 @@ const PublishUtils = (() => {
   function mergeResultSha(result) {
     if (!result) return '';
     if (typeof result.sha === 'string' && result.sha) return result.sha;
-    if (result.commit && typeof result.commit.sha === 'string' && result.commit.sha) return result.commit.sha;
-    if (result.object && typeof result.object.sha === 'string' && result.object.sha) return result.object.sha;
+    if (result.commit && typeof result.commit.sha === 'string' && result.commit.sha)
+      return result.commit.sha;
+    if (result.object && typeof result.object.sha === 'string' && result.object.sha)
+      return result.object.sha;
     return '';
   }
 

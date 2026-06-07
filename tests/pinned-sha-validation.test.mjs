@@ -18,14 +18,22 @@ test('read commit accepts matching cached SHA without overriding branch', () => 
 
 test('read commit uses cached SHA only when compare proves it is ahead', () => {
   assert.deepEqual(
-    chooseReadCommitFromCacheValidation({ branchSha: 'old-branch', cachedSha: 'new-cache', cacheAheadBy: 1 }),
+    chooseReadCommitFromCacheValidation({
+      branchSha: 'old-branch',
+      cachedSha: 'new-cache',
+      cacheAheadBy: 1
+    }),
     { commitSha: 'new-cache', source: 'last successful write' }
   );
 });
 
 test('read commit ignores stale cached SHA when it is not ahead', () => {
   assert.deepEqual(
-    chooseReadCommitFromCacheValidation({ branchSha: 'new-branch', cachedSha: 'old-cache', cacheAheadBy: 0 }),
+    chooseReadCommitFromCacheValidation({
+      branchSha: 'new-branch',
+      cachedSha: 'old-cache',
+      cacheAheadBy: 0
+    }),
     { commitSha: 'new-branch', source: 'branch ref' }
   );
 });

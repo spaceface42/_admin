@@ -14,8 +14,14 @@ import {
 } from '../src/lib/content-source-utils.mjs';
 
 test('cacheKey and repoKeyPrefix use owner/repo branch format', () => {
-  assert.equal(cacheKey({ owner: 'spaceface42', repo: '_blackhole', branch: 'content' }), 'spaceface42/_blackhole:content');
-  assert.equal(repoKeyPrefix({ owner: 'spaceface42', repo: '_blackhole' }), 'spaceface42/_blackhole:');
+  assert.equal(
+    cacheKey({ owner: 'spaceface42', repo: '_blackhole', branch: 'content' }),
+    'spaceface42/_blackhole:content'
+  );
+  assert.equal(
+    repoKeyPrefix({ owner: 'spaceface42', repo: '_blackhole' }),
+    'spaceface42/_blackhole:'
+  );
 });
 
 test('writeCachedCommit writes immutable cache entry', () => {
@@ -107,7 +113,11 @@ test('findBlobInTree returns matching blob only', () => {
     { path: 'docs', type: 'tree' },
     { path: 'docs/index.html', type: 'blob', sha: 'abc' }
   ];
-  assert.deepEqual(findBlobInTree(tree, 'docs/index.html'), { path: 'docs/index.html', type: 'blob', sha: 'abc' });
+  assert.deepEqual(findBlobInTree(tree, 'docs/index.html'), {
+    path: 'docs/index.html',
+    type: 'blob',
+    sha: 'abc'
+  });
   assert.equal(findBlobInTree(tree, 'docs'), null);
 });
 

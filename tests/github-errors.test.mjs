@@ -34,7 +34,10 @@ test('githubErrorMessage handles not found errors', () => {
 
 test('githubErrorMessage handles conflicts with custom message', () => {
   assert.equal(
-    githubErrorMessage({ status: 409, message: 'Conflict' }, { action: 'Save', conflict: 'Custom conflict' }),
+    githubErrorMessage(
+      { status: 409, message: 'Conflict' },
+      { action: 'Save', conflict: 'Custom conflict' }
+    ),
     'Custom conflict'
   );
 });

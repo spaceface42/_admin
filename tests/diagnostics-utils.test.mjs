@@ -26,10 +26,9 @@ test('diagnosticsRows converts data to display rows', () => {
 });
 
 test('diagnosticsText appends validation warnings', () => {
-  const text = diagnosticsText(
-    { Repository: 'a/b' },
-    [{ kind: 'config', msg: 'missing media dir' }]
-  );
+  const text = diagnosticsText({ Repository: 'a/b' }, [
+    { kind: 'config', msg: 'missing media dir' }
+  ]);
   assert.match(text, /Repository: a\/b/);
   assert.match(text, /Validation warnings/);
   assert.match(text, /config: missing media dir/);

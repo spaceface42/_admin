@@ -1,11 +1,11 @@
 export function parsePreviewCssInput(value) {
   if (Array.isArray(value)) {
-    return value.map(item => String(item).trim()).filter(Boolean);
+    return value.map((item) => String(item).trim()).filter(Boolean);
   }
 
   return String(value || '')
     .split(',')
-    .map(item => item.trim())
+    .map((item) => item.trim())
     .filter(Boolean);
 }
 
@@ -20,16 +20,17 @@ export function configPreviewObject(config) {
 }
 
 export function shouldPersistWorkBranch(config, workBranch, defaultWorkBranch = 'content') {
-  return !!(
-    config &&
-    Object.prototype.hasOwnProperty.call(config, 'workBranch')
-  ) || workBranch !== defaultWorkBranch;
+  return (
+    !!(config && Object.prototype.hasOwnProperty.call(config, 'workBranch')) ||
+    workBranch !== defaultWorkBranch
+  );
 }
 
 export function buildNextGitCMSConfig(existingConfig, settings) {
-  const existing = existingConfig && typeof existingConfig === 'object' && !Array.isArray(existingConfig)
-    ? existingConfig
-    : {};
+  const existing =
+    existingConfig && typeof existingConfig === 'object' && !Array.isArray(existingConfig)
+      ? existingConfig
+      : {};
 
   const next = {
     ...existing,

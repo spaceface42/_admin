@@ -20,42 +20,64 @@ test('manifestLabelForFragment returns manifest label or id fallback', () => {
 });
 
 test('isFragmentDirty detects html changes', () => {
-  assert.equal(isFragmentDirty({
-    id: 'hero',
-    label: 'Hero Section',
-    innerHTML: '<h1>New</h1>',
-    origHTML: '<h1>Old</h1>'
-  }, manifest), true);
+  assert.equal(
+    isFragmentDirty(
+      {
+        id: 'hero',
+        label: 'Hero Section',
+        innerHTML: '<h1>New</h1>',
+        origHTML: '<h1>Old</h1>'
+      },
+      manifest
+    ),
+    true
+  );
 });
 
 test('isFragmentDirty detects label changes', () => {
-  assert.equal(isFragmentDirty({
-    id: 'hero',
-    label: 'Different',
-    innerHTML: '<h1>Same</h1>',
-    origHTML: '<h1>Same</h1>'
-  }, manifest), true);
+  assert.equal(
+    isFragmentDirty(
+      {
+        id: 'hero',
+        label: 'Different',
+        innerHTML: '<h1>Same</h1>',
+        origHTML: '<h1>Same</h1>'
+      },
+      manifest
+    ),
+    true
+  );
 });
 
 test('isFragmentDirty returns false when html and label match original state', () => {
-  assert.equal(isFragmentDirty({
-    id: 'hero',
-    label: 'Hero Section',
-    innerHTML: '<h1>Same</h1>',
-    origHTML: '<h1>Same</h1>'
-  }, manifest), false);
+  assert.equal(
+    isFragmentDirty(
+      {
+        id: 'hero',
+        label: 'Hero Section',
+        innerHTML: '<h1>Same</h1>',
+        origHTML: '<h1>Same</h1>'
+      },
+      manifest
+    ),
+    false
+  );
 });
 
 test('applyEditorValues updates html, label and dirty flag', () => {
-  const next = applyEditorValues({
-    id: 'hero',
-    label: 'Hero Section',
-    innerHTML: '<h1>Old</h1>',
-    origHTML: '<h1>Old</h1>'
-  }, {
-    html: '<h1>New</h1>',
-    label: 'Hero Section'
-  }, manifest);
+  const next = applyEditorValues(
+    {
+      id: 'hero',
+      label: 'Hero Section',
+      innerHTML: '<h1>Old</h1>',
+      origHTML: '<h1>Old</h1>'
+    },
+    {
+      html: '<h1>New</h1>',
+      label: 'Hero Section'
+    },
+    manifest
+  );
 
   assert.equal(next.innerHTML, '<h1>New</h1>');
   assert.equal(next.dirty, true);
@@ -79,7 +101,7 @@ test('dirtyFragments filters dirty fragments', () => {
     dirtyFragments([
       { id: 'a', dirty: false },
       { id: 'b', dirty: true }
-    ]).map(f => f.id),
+    ]).map((f) => f.id),
     ['b']
   );
 });
@@ -90,8 +112,5 @@ test('dirtyFragmentIdsForFile returns dirty ids for one file', () => {
     ['intro', { id: 'intro', dirty: false }]
   ]);
 
-  assert.deepEqual(
-    dirtyFragmentIdsForFile({ fragments: ['hero', 'intro'] }, map),
-    ['hero']
-  );
+  assert.deepEqual(dirtyFragmentIdsForFile({ fragments: ['hero', 'intro'] }, map), ['hero']);
 });

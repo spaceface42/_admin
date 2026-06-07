@@ -65,7 +65,7 @@ const ContentSourceUtils = (() => {
   }
 
   function findBlobInTree(tree, path) {
-    return (tree || []).find(item => item && item.path === path && item.type === 'blob') || null;
+    return (tree || []).find((item) => item && item.path === path && item.type === 'blob') || null;
   }
 
   function normalizeBlobContent(content) {

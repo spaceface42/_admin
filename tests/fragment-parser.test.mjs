@@ -28,7 +28,10 @@ test('replaceMarkedFragment replaces only the marked block inner HTML', () => {
 });
 
 test('validateMarkers warns for missing end marker', () => {
-  const warnings = FragmentParser.validateMarkers('<!-- cms:start hero --><section data-fragment="hero">x</section>', 'docs/index.html');
+  const warnings = FragmentParser.validateMarkers(
+    '<!-- cms:start hero --><section data-fragment="hero">x</section>',
+    'docs/index.html'
+  );
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /no matching cms:end/);
 });

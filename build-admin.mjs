@@ -39,8 +39,22 @@ await writeFile(generatedJsPath, jsRaw + "\n", "utf8");
 const js = jsRaw.replaceAll("</script", "<\\/script");
 
 const built = html
-  .replace('<link rel="stylesheet" href="./admin.css">', () => `<style>\n${css.trim()}\n</style>`)
-  .replace('<script src="./admin.js" defer></script>', () => `<script>\n${js.trim()}\n</script>`);
+  .replace(
+    /<link\s+rel=["']stylesheet["']\s+href=["']\.\/admin\.css["']\s*\/?>/i,
+    () => `<style>\n${css.trim()}\n</style>`
+  )
+  .replace(
+    /<script\s+src=["']\.\/admin\.js["']\s+defer\s*><\/script>/i,
+    () => `<script>\n${js.trim()}\n</script>`
+  );
+
+if (built.includes('href="./admin.css"') || built.includes("href='./admin.css'")) {
+  throw new Error('Build failed to inline admin.css into admin.html');
+}
+
+if (built.includes('src="./admin.js"') || built.includes("src='./admin.js'")) {
+  throw new Error('Build failed to inline admin.js into admin.html');
+}
 
 await writeFile(outPath, built + "\n", "utf8");
 await mkdir(docsDir, { recursive: true });

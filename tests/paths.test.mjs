@@ -12,7 +12,10 @@ test('publicPathToRepoPath maps public assets to docs assets', () => {
 });
 
 test('mediaPublicUrl uses relative prefix', () => {
-  assert.equal(Paths.mediaPublicUrl('docs/assets/media/photo.jpg','assets/media/'), 'assets/media/photo.jpg');
+  assert.equal(
+    Paths.mediaPublicUrl('docs/assets/media/photo.jpg', 'assets/media/'),
+    'assets/media/photo.jpg'
+  );
 });
 
 test('githubPath encodes each path segment', () => {

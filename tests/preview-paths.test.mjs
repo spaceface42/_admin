@@ -42,7 +42,10 @@ test('rawUrlForPreviewAsset creates raw GitHub URLs with cache bust', () => {
 test('rewriteFragmentMediaUrls rewrites fragment media src paths', () => {
   const html = '<img src="assets/media/photo.png" alt="Photo">';
   const out = PreviewPaths.rewriteFragmentMediaUrls(html, ctx);
-  assert.match(out, /raw\.githubusercontent\.com\/spaceface42\/_blackhole\/abc123\/docs\/assets\/media\/photo\.png\?v=123/);
+  assert.match(
+    out,
+    /raw\.githubusercontent\.com\/spaceface42\/_blackhole\/abc123\/docs\/assets\/media\/photo\.png\?v=123/
+  );
 });
 
 test('rewriteFullPageAssetUrls rewrites CSS, images and srcset', () => {
@@ -63,6 +66,7 @@ test('rewriteFullPageAssetUrls does not rewrite normal page links', () => {
 });
 
 test('external and special URLs are not rewritten', () => {
-  const html = '<img src="https://example.com/a.png"><a href="#top">Top</a><img src="data:image/png;base64,aaa">';
+  const html =
+    '<img src="https://example.com/a.png"><a href="#top">Top</a><img src="data:image/png;base64,aaa">';
   assert.equal(PreviewPaths.rewriteFullPageAssetUrls(html, 'docs/index.html', ctx), html);
 });

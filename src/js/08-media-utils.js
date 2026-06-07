@@ -8,7 +8,14 @@ const MediaUtils = (() => {
 
   function sanitizeFilename(name) {
     const parts = String(name || '').split('.');
-    const ext = parts.length > 1 ? '.' + parts.pop().toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+    const ext =
+      parts.length > 1
+        ? '.' +
+          parts
+            .pop()
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '')
+        : '';
     const base =
       parts
         .join('.')
@@ -31,9 +38,7 @@ const MediaUtils = (() => {
   function splitFilename(name) {
     const raw = String(name || '');
     const dot = raw.lastIndexOf('.');
-    return dot > 0
-      ? { base: raw.slice(0, dot), ext: raw.slice(dot) }
-      : { base: raw, ext: '' };
+    return dot > 0 ? { base: raw.slice(0, dot), ext: raw.slice(dot) } : { base: raw, ext: '' };
   }
 
   function uniqueNameCandidate(name, index) {
@@ -47,7 +52,7 @@ const MediaUtils = (() => {
 
     for (const fragment of fragments || []) {
       const html = fragment?.innerHTML || '';
-      if (needles.some(needle => needle && html.includes(needle))) {
+      if (needles.some((needle) => needle && html.includes(needle))) {
         hits.push(`${fragment.label || fragment.id} (${fragment.path})`);
       }
     }

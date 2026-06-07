@@ -125,7 +125,9 @@ const ConnectUtils = (() => {
   }
 
   function parseRepoUrl(input) {
-    const raw = String(input || '').trim().replace(/\.git$/, '');
+    const raw = String(input || '')
+      .trim()
+      .replace(/\.git$/, '');
     if (!raw) return null;
 
     const githubMatch = raw.match(/github\.com[/:]([^/\s]+)\/([^/\s?#]+)/i);
@@ -144,7 +146,7 @@ const ConnectUtils = (() => {
   function branchLabel(name) {
     return String(name || '')
       .replace(/[-_]+/g, ' ')
-      .replace(/\b\w/g, char => char.toUpperCase());
+      .replace(/\b\w/g, (char) => char.toUpperCase());
   }
 
   function configStatePatch(config) {
@@ -254,7 +256,7 @@ const ContentSourceUtils = (() => {
   }
 
   function findBlobInTree(tree, path) {
-    return (tree || []).find(item => item && item.path === path && item.type === 'blob') || null;
+    return (tree || []).find((item) => item && item.path === path && item.type === 'blob') || null;
   }
 
   function normalizeBlobContent(content) {
@@ -287,106 +289,125 @@ const ContentSourceUtils = (() => {
     preview, editor, publishing, diagnostics, ui
 */
 
-"use strict";
+'use strict';
 /* ============================================================
    GitCMS — single-file, zero-backend CMS
    Data model: ONE canonical file per path. Fragments reference
    their file, they do not carry their own copy of file content.
    ============================================================ */
 
-const LS_REPO='gitcms_repo', LS_TOKEN='gitcms_tok', LS_LAST_WRITE='gitcms_last_write_commits';
+const LS_REPO = 'gitcms_repo',
+  LS_TOKEN = 'gitcms_tok',
+  LS_LAST_WRITE = 'gitcms_last_write_commits';
 // TODO SECURITY:
 // During development, the GitHub token is stored in localStorage for convenience.
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
-const API='https://api.github.com';
-const GITCMS_VERSION='1.1.48-copy-admin-to-docs';
-const CONFIG_PATH='gitcms.config.json';
-const DEFAULT_MEDIA_DIR='assets/media';
-const DEFAULT_MANIFEST_PATH='fragments.json';
-const DEFAULT_WORK_BRANCH='content';
-const LEGACY_WORK_BRANCH='draft';
+const API = 'https://api.github.com';
+const GITCMS_VERSION = '1.1.50-inline-build-output-fix';
+const CONFIG_PATH = 'gitcms.config.json';
+const DEFAULT_MEDIA_DIR = 'assets/media';
+const DEFAULT_MANIFEST_PATH = 'fragments.json';
+const DEFAULT_WORK_BRANCH = 'content';
+const LEGACY_WORK_BRANCH = 'draft';
 
 const state = {
-  owner:'', repo:'', token:'',
-  defaultBranch:'main',   // read source of truth (resolved at connect)
-  workBranch:'content',
-  files:   new Map(),     // path -> { path, content, shaMain, shaDraft, fragments:[ids] }
-  frags:   new Map(),     // id   -> fragment object (references file via .path)
-  manifest:null,          // array | null  (null => none found)
-  manifestPath:'fragments.json',
-  activeId:null,
-  previewMode:'fragment',
-  contentTree:null,        // {branch, commitSha, treeSha, tree}
-  validation:{config:[],manifest:[],markers:[],runtime:[]},
+  owner: '',
+  repo: '',
+  token: '',
+  defaultBranch: 'main', // read source of truth (resolved at connect)
+  workBranch: 'content',
+  files: new Map(), // path -> { path, content, shaMain, shaDraft, fragments:[ids] }
+  frags: new Map(), // id   -> fragment object (references file via .path)
+  manifest: null, // array | null  (null => none found)
+  manifestPath: 'fragments.json',
+  activeId: null,
+  previewMode: 'fragment',
+  contentTree: null, // {branch, commitSha, treeSha, tree}
+  validation: { config: [], manifest: [], markers: [], runtime: [] }
 };
 
 /* ---------- helpers ---------- */
-const $=s=>document.querySelector(s);
-const el=(id)=>document.getElementById(id);
-const enc=s=>btoa(unescape(encodeURIComponent(s)));
-const dec=s=>decodeURIComponent(escape(atob(s)));
-const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const $ = (s) => document.querySelector(s);
+const el = (id) => document.getElementById(id);
+const enc = (s) => btoa(unescape(encodeURIComponent(s)));
+const dec = (s) => decodeURIComponent(escape(atob(s)));
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-function toast(msg,kind){
-  const t=el('toast'); el('toastTxt').textContent=msg;
-  t.className=''; if(kind)t.classList.add(kind); t.classList.add('show');
-  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2600);
+function toast(msg, kind) {
+  const t = el('toast');
+  el('toastTxt').textContent = msg;
+  t.className = '';
+  if (kind) t.classList.add(kind);
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 2600);
 }
-const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-
-
-
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const LastWriteCommitCache = Object.freeze({
-  ttlMs: 30*60*1000,
-  readAll(){
-    try{return JSON.parse(localStorage.getItem(LS_LAST_WRITE)||'{}')||{};}catch(e){return {};}
+  ttlMs: 30 * 60 * 1000,
+  readAll() {
+    try {
+      return JSON.parse(localStorage.getItem(LS_LAST_WRITE) || '{}') || {};
+    } catch (e) {
+      return {};
+    }
   },
-  writeAll(data){
-    try{localStorage.setItem(LS_LAST_WRITE,JSON.stringify(data));}catch(e){}
+  writeAll(data) {
+    try {
+      localStorage.setItem(LS_LAST_WRITE, JSON.stringify(data));
+    } catch (e) {}
   },
-  key(branch){
-    return ContentSourceUtils.cacheKey({owner:state.owner,repo:state.repo,branch});
+  key(branch) {
+    return ContentSourceUtils.cacheKey({ owner: state.owner, repo: state.repo, branch });
   },
-  set(branch,sha){
-    const data=ContentSourceUtils.writeCachedCommit(this.readAll(),{
-      owner:state.owner,
-      repo:state.repo,
+  set(branch, sha) {
+    const data = ContentSourceUtils.writeCachedCommit(this.readAll(), {
+      owner: state.owner,
+      repo: state.repo,
       branch,
       sha,
-      now:Date.now()
+      now: Date.now()
     });
     this.writeAll(data);
   },
-  get(branch){
-    if(!branch) return '';
-    return ContentSourceUtils.cachedCommitIfFresh(this.readAll()[this.key(branch)],{
-      now:Date.now(),
-      ttlMs:this.ttlMs
+  get(branch) {
+    if (!branch) return '';
+    return ContentSourceUtils.cachedCommitIfFresh(this.readAll()[this.key(branch)], {
+      now: Date.now(),
+      ttlMs: this.ttlMs
     });
   },
-  clear(branch){
-    this.writeAll(ContentSourceUtils.clearCachedBranch(this.readAll(),{
-      owner:state.owner,
-      repo:state.repo,
-      branch
-    }));
+  clear(branch) {
+    this.writeAll(
+      ContentSourceUtils.clearCachedBranch(this.readAll(), {
+        owner: state.owner,
+        repo: state.repo,
+        branch
+      })
+    );
   },
-  clearRepo(){
-    this.writeAll(ContentSourceUtils.clearCachedRepo(this.readAll(),{
-      owner:state.owner,
-      repo:state.repo
-    }));
+  clearRepo() {
+    this.writeAll(
+      ContentSourceUtils.clearCachedRepo(this.readAll(), {
+        owner: state.owner,
+        repo: state.repo
+      })
+    );
   }
 });
 
-function parseRepoUrl(url){
+function parseRepoUrl(url) {
   return ConnectUtils.parseRepoUrl(url);
 }
 
-function escAttr(s){
-  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function escAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 /* ---------- Paths ---------- */
@@ -394,47 +415,55 @@ function escAttr(s){
 // only when mediaPublicUrl() is called without an explicit prefix.
 
 const Paths = Object.freeze({
-  githubPath(path){
-    return String(path||'').split('/').map(encodeURIComponent).join('/');
+  githubPath(path) {
+    return String(path || '')
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/');
   },
-  normalizeRepoPath(path){
-    return (path||'').trim().replace(/^\/+|\/+$/g,'').replace(/\/+/g,'/');
+  normalizeRepoPath(path) {
+    return (path || '')
+      .trim()
+      .replace(/^\/+|\/+$/g, '')
+      .replace(/\/+/g, '/');
   },
-  defaultPublicPrefixFor(dir){
-    const clean=this.normalizeRepoPath(dir).replace(/^docs\//,'');
-    return clean.replace(/\/?$/,'/');
+  defaultPublicPrefixFor(dir) {
+    const clean = this.normalizeRepoPath(dir).replace(/^docs\//, '');
+    return clean.replace(/\/?$/, '/');
   },
-  normalizePublicPrefix(prefix,dir){
-    let raw=(prefix||'').trim()||this.defaultPublicPrefixFor(dir);
-    if(raw.includes('{path}') || raw.includes('{file}')) return raw;
-    return raw.replace(/\/?$/,'/');
+  normalizePublicPrefix(prefix, dir) {
+    let raw = (prefix || '').trim() || this.defaultPublicPrefixFor(dir);
+    if (raw.includes('{path}') || raw.includes('{file}')) return raw;
+    return raw.replace(/\/?$/, '/');
   },
-  isProjectPagesSite(owner=state.owner,repo=state.repo){
-    return !!(owner && repo && repo.toLowerCase()!==`${owner.toLowerCase()}.github.io`);
+  isProjectPagesSite(owner = state.owner, repo = state.repo) {
+    return !!(owner && repo && repo.toLowerCase() !== `${owner.toLowerCase()}.github.io`);
   },
-  normalizePathParts(path){
-    const parts=[];
-    for(const part of String(path||'').split('/')){
-      if(!part || part==='.') continue;
-      if(part==='..') parts.pop();
+  normalizePathParts(path) {
+    const parts = [];
+    for (const part of String(path || '').split('/')) {
+      if (!part || part === '.') continue;
+      if (part === '..') parts.pop();
       else parts.push(part);
     }
     return parts.join('/');
   },
-  publicPathToRepoPath(publicPath){
-    const clean=this.normalizeRepoPath(publicPath);
-    if(!clean) return '';
-    if(clean.startsWith('docs/')) return clean;
+  publicPathToRepoPath(publicPath) {
+    const clean = this.normalizeRepoPath(publicPath);
+    if (!clean) return '';
+    if (clean.startsWith('docs/')) return clean;
     return 'docs/' + clean;
   },
-  mediaPublicUrl(repoPath,prefix=mediaPrefix()){
-    const file=String(repoPath||'').split('/').pop();
-    if(prefix.includes('{path}')) return prefix.replace('{path}', repoPath);
-    if(prefix.includes('{file}')) return prefix.replace('{file}', file);
-    return prefix.replace(/\/?$/,'/') + file;
+  mediaPublicUrl(repoPath, prefix = mediaPrefix()) {
+    const file = String(repoPath || '')
+      .split('/')
+      .pop();
+    if (prefix.includes('{path}')) return prefix.replace('{path}', repoPath);
+    if (prefix.includes('{file}')) return prefix.replace('{file}', file);
+    return prefix.replace(/\/?$/, '/') + file;
   },
-  rawUrlForRepoPath(path,ref=state.workBranch){
-    const encoded=this.normalizeRepoPath(path).split('/').map(encodeURIComponent).join('/');
+  rawUrlForRepoPath(path, ref = state.workBranch) {
+    const encoded = this.normalizeRepoPath(path).split('/').map(encodeURIComponent).join('/');
     return `https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(ref)}/${encoded}`;
   }
 });
@@ -443,85 +472,87 @@ const Paths = Object.freeze({
 // Depends on state/constants/Paths from 00-core.js.
 
 const Store = Object.freeze({
-  setRepo(owner,repo,token){
-    state.owner=owner;
-    state.repo=repo;
-    state.token=token;
+  setRepo(owner, repo, token) {
+    state.owner = owner;
+    state.repo = repo;
+    state.token = token;
   },
-  setDefaultBranch(branch){
-    state.defaultBranch=branch||'main';
+  setDefaultBranch(branch) {
+    state.defaultBranch = branch || 'main';
   },
-  setWorkBranch(branch){
-    state.workBranch=(branch||DEFAULT_WORK_BRANCH).trim();
+  setWorkBranch(branch) {
+    state.workBranch = (branch || DEFAULT_WORK_BRANCH).trim();
   },
-  setManifestPath(path){
-    state.manifestPath=Paths.normalizeRepoPath(path)||DEFAULT_MANIFEST_PATH;
+  setManifestPath(path) {
+    state.manifestPath = Paths.normalizeRepoPath(path) || DEFAULT_MANIFEST_PATH;
   },
-  clearLoadedContent(){
+  clearLoadedContent() {
     state.files.clear();
     state.frags.clear();
-    state.activeId=null;
+    state.activeId = null;
   },
-  setContentTree(snapshot){
-    state.contentTree=snapshot;
+  setContentTree(snapshot) {
+    state.contentTree = snapshot;
   },
-  clearContentTree(){
-    state.contentTree=null;
+  clearContentTree() {
+    state.contentTree = null;
   },
-  setManifest(manifest){
-    state.manifest=manifest;
+  setManifest(manifest) {
+    state.manifest = manifest;
   },
-  setActiveFragment(id){
-    state.activeId=id;
+  setActiveFragment(id) {
+    state.activeId = id;
   },
-  addFile(fileRec){
-    state.files.set(fileRec.path,fileRec);
+  addFile(fileRec) {
+    state.files.set(fileRec.path, fileRec);
   },
-  removeFile(path){
+  removeFile(path) {
     state.files.delete(path);
   },
-  addFragment(fragment){
-    state.frags.set(fragment.id,fragment);
+  addFragment(fragment) {
+    state.frags.set(fragment.id, fragment);
   },
-  manifestLabelForFragment(fragment){
-    if(!fragment) return '';
-    const entry=state.manifest&&state.manifest.find(e=>e.id===fragment.id);
-    return entry&&entry.label ? entry.label : fragment.id;
+  manifestLabelForFragment(fragment) {
+    if (!fragment) return '';
+    const entry = state.manifest && state.manifest.find((e) => e.id === fragment.id);
+    return entry && entry.label ? entry.label : fragment.id;
   },
-  isFragmentDirty(fragment){
-    if(!fragment) return false;
-    return String(fragment.innerHTML||'')!==String(fragment.origHTML||'') ||
-      String(fragment.label||fragment.id)!==String(this.manifestLabelForFragment(fragment));
+  isFragmentDirty(fragment) {
+    if (!fragment) return false;
+    return (
+      String(fragment.innerHTML || '') !== String(fragment.origHTML || '') ||
+      String(fragment.label || fragment.id) !== String(this.manifestLabelForFragment(fragment))
+    );
   },
-  applyEditorValues(id,{html,label}={}){
-    const fragment=state.frags.get(id);
-    if(!fragment) return null;
-    if(html!==undefined) fragment.innerHTML=html;
-    if(label!==undefined) fragment.label=(String(label).trim()||fragment.id);
-    fragment.dirty=this.isFragmentDirty(fragment);
+  applyEditorValues(id, { html, label } = {}) {
+    const fragment = state.frags.get(id);
+    if (!fragment) return null;
+    if (html !== undefined) fragment.innerHTML = html;
+    if (label !== undefined) fragment.label = String(label).trim() || fragment.id;
+    fragment.dirty = this.isFragmentDirty(fragment);
     return fragment;
   },
-  markFragmentClean(id){
-    const fragment=state.frags.get(id);
-    if(!fragment) return null;
-    fragment.origHTML=fragment.innerHTML;
-    fragment.dirty=false;
+  markFragmentClean(id) {
+    const fragment = state.frags.get(id);
+    if (!fragment) return null;
+    fragment.origHTML = fragment.innerHTML;
+    fragment.dirty = false;
     return fragment;
   },
-  dirtyFragments(){
-    return [...state.frags.values()].filter(f=>f.dirty);
+  dirtyFragments() {
+    return [...state.frags.values()].filter((f) => f.dirty);
   },
-  dirtyFragmentIdsForFile(fileRec){
-    if(!fileRec || !Array.isArray(fileRec.fragments)) return [];
-    return fileRec.fragments.filter(id=>state.frags.get(id)?.dirty);
+  dirtyFragmentIdsForFile(fileRec) {
+    if (!fileRec || !Array.isArray(fileRec.fragments)) return [];
+    return fileRec.fragments.filter((id) => state.frags.get(id)?.dirty);
   },
-  clearValidationBucket(kind){
-    if(state.validation && state.validation[kind]) state.validation[kind]=[];
+  clearValidationBucket(kind) {
+    if (state.validation && state.validation[kind]) state.validation[kind] = [];
   },
-  resetRuntimeValidation(){
-    state.validation.manifest=[];
-    state.validation.markers=[];
-    state.validation.runtime=[];
+  resetRuntimeValidation() {
+    state.validation.manifest = [];
+    state.validation.markers = [];
+    state.validation.runtime = [];
   }
 });
 
@@ -530,101 +561,116 @@ const Store = Object.freeze({
 // and GitHubApiUtils from 00-api-utils.js.
 
 const GitHubApi = Object.freeze({
-  repoPath(path=''){
-    return GitHubApiUtils.repoPath({owner:state.owner,repo:state.repo,path});
+  repoPath(path = '') {
+    return GitHubApiUtils.repoPath({ owner: state.owner, repo: state.repo, path });
   },
-  async request(path,{method='GET',body,raw=false}={}){
+  async request(path, { method = 'GET', body, raw = false } = {}) {
     // Keep the request CORS-simple enough for local file:// usage.
     // Content freshness is handled by the content-tree/blob read model,
     // not by custom no-cache headers.
-    const res=await fetch(API+path,{
+    const res = await fetch(API + path, {
       method,
-      headers:GitHubApiUtils.requestHeaders({token:state.token,hasBody:!!body}),
-      body:GitHubApiUtils.requestBody(body)
+      headers: GitHubApiUtils.requestHeaders({ token: state.token, hasBody: !!body }),
+      body: GitHubApiUtils.requestBody(body)
     });
-    if(!res.ok){
-      let detail=''; try{detail=(await res.json()).message||'';}catch(e){}
-      const err=new Error(detail||res.statusText); err.status=res.status; throw err;
+    if (!res.ok) {
+      let detail = '';
+      try {
+        detail = (await res.json()).message || '';
+      } catch (e) {}
+      const err = new Error(detail || res.statusText);
+      err.status = res.status;
+      throw err;
     }
-    if(raw) return res;
-    if(res.status===204) return null;
-    const text=await res.text();
+    if (raw) return res;
+    if (res.status === 204) return null;
+    const text = await res.text();
     return text ? JSON.parse(text) : null;
   },
-  getRepo(){
+  getRepo() {
     return this.request(this.repoPath());
   },
-  getBranch(branch){
+  getBranch(branch) {
     return this.request(this.repoPath(GitHubApiUtils.branchPath(branch)));
   },
-  getRef(branch){
+  getRef(branch) {
     return this.request(this.repoPath(GitHubApiUtils.refPath(branch)));
   },
-  async createRef(branch,sha){
-    return this.request(this.repoPath('/git/refs'),{
-      method:'POST',
-      body:GitHubApiUtils.createRefBody({branch,sha})
+  async createRef(branch, sha) {
+    return this.request(this.repoPath('/git/refs'), {
+      method: 'POST',
+      body: GitHubApiUtils.createRefBody({ branch, sha })
     });
   },
-  createBranchFromSha(branch,sha){
-    return this.createRef(branch,sha);
+  createBranchFromSha(branch, sha) {
+    return this.createRef(branch, sha);
   },
-  async updateRef(branch,sha,{force=false}={}){
-    const out=await this.request(this.repoPath(GitHubApiUtils.updateRefPath(branch)),{
-      method:'PATCH',
-      body:GitHubApiUtils.updateRefBody({sha,force})
+  async updateRef(branch, sha, { force = false } = {}) {
+    const out = await this.request(this.repoPath(GitHubApiUtils.updateRefPath(branch)), {
+      method: 'PATCH',
+      body: GitHubApiUtils.updateRefBody({ sha, force })
     });
-    LastWriteCommitCache.set(branch,sha);
+    LastWriteCommitCache.set(branch, sha);
     return out;
   },
-  async contentReadRef(ref){
-    if(ref && (ref===state.workBranch || ref===state.defaultBranch || ref===LEGACY_WORK_BRANCH)){
-      try{
-        const branchRef=await this.getRef(ref);
+  async contentReadRef(ref) {
+    if (
+      ref &&
+      (ref === state.workBranch || ref === state.defaultBranch || ref === LEGACY_WORK_BRANCH)
+    ) {
+      try {
+        const branchRef = await this.getRef(ref);
         return branchRef && branchRef.object && branchRef.object.sha ? branchRef.object.sha : ref;
-      }catch(e){
+      } catch (e) {
         return ref;
       }
     }
     return ref;
   },
-  async getContent(path,ref){
-    const readRef=await this.contentReadRef(ref);
-    return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,ref:readRef,githubPath:Paths.githubPath})));
+  async getContent(path, ref) {
+    const readRef = await this.contentReadRef(ref);
+    return this.request(
+      this.repoPath(
+        GitHubApiUtils.contentsPath({ path, ref: readRef, githubPath: Paths.githubPath })
+      )
+    );
   },
-  getContentForWrite(path,branch){
+  getContentForWrite(path, branch) {
     // Write-source read:
     // Use the actual CMS work branch name directly and bypass the content-tree
     // cache/pinned preview read path. This returns the SHA expected by the
     // GitHub Contents PUT endpoint.
-    return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,ref:branch,githubPath:Paths.githubPath})));
+    return this.request(
+      this.repoPath(
+        GitHubApiUtils.contentsPath({ path, ref: branch, githubPath: Paths.githubPath })
+      )
+    );
   },
-  getFileForWrite(path,branch){
-    return this.getContentForWrite(path,branch);
+  getFileForWrite(path, branch) {
+    return this.getContentForWrite(path, branch);
   },
-  getGitCommit(sha){
+  getGitCommit(sha) {
     return this.request(this.repoPath(GitHubApiUtils.commitPath(sha)));
   },
-  getTreeBySha(treeSha,{recursive=false}={}){
-    return this.request(this.repoPath(GitHubApiUtils.treePath(treeSha,{recursive})));
+  getTreeBySha(treeSha, { recursive = false } = {}) {
+    return this.request(this.repoPath(GitHubApiUtils.treePath(treeSha, { recursive })));
   },
-  getBlob(sha){
+  getBlob(sha) {
     return this.request(this.repoPath(GitHubApiUtils.blobPath(sha)));
   },
-  async resolveBranchCommitForRead(branch,{preferLastWrite=true}={}){
-    const ref=await this.getRef(branch);
-    const branchSha=ref && ref.object ? ref.object.sha : '';
+  async resolveBranchCommitForRead(branch, { preferLastWrite = true } = {}) {
+    const ref = await this.getRef(branch);
+    const branchSha = ref && ref.object ? ref.object.sha : '';
 
-    if(!branchSha) throw new Error(`Could not resolve ${branch} branch SHA.`);
+    if (!branchSha) throw new Error(`Could not resolve ${branch} branch SHA.`);
 
-    const cachedSha=preferLastWrite && branch===state.workBranch
-      ? LastWriteCommitCache.get(branch)
-      : '';
+    const cachedSha =
+      preferLastWrite && branch === state.workBranch ? LastWriteCommitCache.get(branch) : '';
 
-    if(!cachedSha || cachedSha===branchSha){
+    if (!cachedSha || cachedSha === branchSha) {
       return {
-        commitSha:branchSha,
-        source:cachedSha ? 'branch ref + cached write' : 'branch ref'
+        commitSha: branchSha,
+        source: cachedSha ? 'branch ref + cached write' : 'branch ref'
       };
     }
 
@@ -636,129 +682,141 @@ const GitHubApi = Object.freeze({
     // - ahead_by > 0 means cachedSha contains commits not visible at branchSha,
     //   so the cache is newer and should be used.
     // - ahead_by === 0, behind, or compare failure means branch ref wins.
-    try{
-      const cmp=await this.compare(branchSha,cachedSha);
-      if(cmp && typeof cmp.ahead_by==='number' && cmp.ahead_by>0){
-        return {commitSha:cachedSha,source:'last successful write'};
+    try {
+      const cmp = await this.compare(branchSha, cachedSha);
+      if (cmp && typeof cmp.ahead_by === 'number' && cmp.ahead_by > 0) {
+        return { commitSha: cachedSha, source: 'last successful write' };
       }
-    }catch(e){
-      console.warn('Could not validate cached content SHA; using branch ref',e);
+    } catch (e) {
+      console.warn('Could not validate cached content SHA; using branch ref', e);
     }
 
     LastWriteCommitCache.clear(branch);
-    return {commitSha:branchSha,source:'branch ref'};
+    return { commitSha: branchSha, source: 'branch ref' };
   },
 
-  async getBranchTreeSnapshot(branch,{force=false,preferLastWrite=true}={}){
-    if(!force && state.contentTree && state.contentTree.branch===branch){
+  async getBranchTreeSnapshot(branch, { force = false, preferLastWrite = true } = {}) {
+    if (!force && state.contentTree && state.contentTree.branch === branch) {
       return state.contentTree;
     }
 
     // Resolve content source carefully:
     // Prefer a pinned write SHA only if it is validated as newer than the
     // current branch ref. Otherwise a stale browser cache could load old content.
-    const resolved=await this.resolveBranchCommitForRead(branch,{preferLastWrite});
-    const commitSha=resolved.commitSha;
-    const source=resolved.source;
+    const resolved = await this.resolveBranchCommitForRead(branch, { preferLastWrite });
+    const commitSha = resolved.commitSha;
+    const source = resolved.source;
 
-    const commit=await this.getGitCommit(commitSha);
-    const treeSha=commit.tree.sha;
-    const tree=await this.getTreeBySha(treeSha,{recursive:true});
-    const snapshot=ContentSourceUtils.buildContentTreeSnapshot({
+    const commit = await this.getGitCommit(commitSha);
+    const treeSha = commit.tree.sha;
+    const tree = await this.getTreeBySha(treeSha, { recursive: true });
+    const snapshot = ContentSourceUtils.buildContentTreeSnapshot({
       branch,
       commitSha,
       treeSha,
       source,
-      treeResponse:tree
+      treeResponse: tree
     });
     Store.setContentTree(snapshot);
     return snapshot;
   },
-  async getBlobFileFromSnapshot(path,snapshot){
-    const cleanPath=Paths.normalizeRepoPath(path);
-    const item=ContentSourceUtils.findBlobInTree(snapshot.tree,cleanPath);
-    if(!item){
-      const err=new Error('File not found');
-      err.status=404;
+  async getBlobFileFromSnapshot(path, snapshot) {
+    const cleanPath = Paths.normalizeRepoPath(path);
+    const item = ContentSourceUtils.findBlobInTree(snapshot.tree, cleanPath);
+    if (!item) {
+      const err = new Error('File not found');
+      err.status = 404;
       throw err;
     }
-    const blob=await this.getBlob(item.sha);
+    const blob = await this.getBlob(item.sha);
     return {
-      path:cleanPath,
-      sha:item.sha,
-      type:'file',
-      encoding:blob.encoding || 'base64',
-      content:ContentSourceUtils.normalizeBlobContent(blob.content)
+      path: cleanPath,
+      sha: item.sha,
+      type: 'file',
+      encoding: blob.encoding || 'base64',
+      content: ContentSourceUtils.normalizeBlobContent(blob.content)
     };
   },
-  async getFileViaGitData(path,ref){
+  async getFileViaGitData(path, ref) {
     // Content tree model:
     // For the CMS work branch, read from a single resolved tree snapshot.
     // `main` is deploy-only and should not be used as an editable source.
-    if(ref===state.workBranch){
-      const snapshot=await this.getBranchTreeSnapshot(state.workBranch);
-      return this.getBlobFileFromSnapshot(path,snapshot);
+    if (ref === state.workBranch) {
+      const snapshot = await this.getBranchTreeSnapshot(state.workBranch);
+      return this.getBlobFileFromSnapshot(path, snapshot);
     }
 
-    const readRef=await this.contentReadRef(ref);
-    const commit=await this.getGitCommit(readRef);
-    const tree=await this.getTreeBySha(commit.tree.sha,{recursive:true});
-    return this.getBlobFileFromSnapshot(path,ContentSourceUtils.buildContentTreeSnapshot({
-      branch:ref,
-      commitSha:readRef,
-      treeSha:commit.tree.sha,
-      source:'branch ref',
-      treeResponse:tree
-    }));
+    const readRef = await this.contentReadRef(ref);
+    const commit = await this.getGitCommit(readRef);
+    const tree = await this.getTreeBySha(commit.tree.sha, { recursive: true });
+    return this.getBlobFileFromSnapshot(
+      path,
+      ContentSourceUtils.buildContentTreeSnapshot({
+        branch: ref,
+        commitSha: readRef,
+        treeSha: commit.tree.sha,
+        source: 'branch ref',
+        treeResponse: tree
+      })
+    );
   },
-  getFile(path,ref){
-    return this.getFileViaGitData(path,ref);
+  getFile(path, ref) {
+    return this.getFileViaGitData(path, ref);
   },
-  listContent(path,ref){
+  listContent(path, ref) {
     // Directory listings still use the contents API.
-    return this.getContent(path,ref);
+    return this.getContent(path, ref);
   },
-  putContent(path,body){
-    return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,githubPath:Paths.githubPath})),{method:'PUT',body});
+  putContent(path, body) {
+    return this.request(
+      this.repoPath(GitHubApiUtils.contentsPath({ path, githubPath: Paths.githubPath })),
+      { method: 'PUT', body }
+    );
   },
-  async saveFile(path,{message,content,branch,sha}){
-    const out=await this.putContent(path,{message,content,branch,...(sha?{sha}:{})});
-    if(out && out.commit && out.commit.sha) LastWriteCommitCache.set(branch,out.commit.sha);
+  async saveFile(path, { message, content, branch, sha }) {
+    const out = await this.putContent(path, { message, content, branch, ...(sha ? { sha } : {}) });
+    if (out && out.commit && out.commit.sha) LastWriteCommitCache.set(branch, out.commit.sha);
     return out;
   },
-  deleteContent(path,body){
-    return this.request(this.repoPath(GitHubApiUtils.contentsPath({path,githubPath:Paths.githubPath})),{method:'DELETE',body});
+  deleteContent(path, body) {
+    return this.request(
+      this.repoPath(GitHubApiUtils.contentsPath({ path, githubPath: Paths.githubPath })),
+      { method: 'DELETE', body }
+    );
   },
-  async deleteFile(path,{message,sha,branch}){
-    const out=await this.deleteContent(path,{message,sha,branch});
-    if(out && out.commit && out.commit.sha) LastWriteCommitCache.set(branch,out.commit.sha);
+  async deleteFile(path, { message, sha, branch }) {
+    const out = await this.deleteContent(path, { message, sha, branch });
+    if (out && out.commit && out.commit.sha) LastWriteCommitCache.set(branch, out.commit.sha);
     return out;
   },
-  async merge(base,head,commit_message){
-    const out=await this.request(this.repoPath(GitHubApiUtils.mergePath()),{method:'POST',body:GitHubApiUtils.mergeBody({base,head,commit_message})});
-    if(out && out.sha) LastWriteCommitCache.set(base,out.sha);
+  async merge(base, head, commit_message) {
+    const out = await this.request(this.repoPath(GitHubApiUtils.mergePath()), {
+      method: 'POST',
+      body: GitHubApiUtils.mergeBody({ base, head, commit_message })
+    });
+    if (out && out.sha) LastWriteCommitCache.set(base, out.sha);
     return out;
   },
-  compare(base,head){
-    return this.request(this.repoPath(GitHubApiUtils.comparePath({base,head})));
+  compare(base, head) {
+    return this.request(this.repoPath(GitHubApiUtils.comparePath({ base, head })));
   },
-  tree(ref){
-    return this.request(this.repoPath(GitHubApiUtils.treePath(ref,{recursive:true})));
+  tree(ref) {
+    return this.request(this.repoPath(GitHubApiUtils.treePath(ref, { recursive: true })));
   },
-  getRecursiveTree(ref){
+  getRecursiveTree(ref) {
     return this.tree(ref);
   },
-  pages(){
+  pages() {
     return this.request(this.repoPath(GitHubApiUtils.pagesPath()));
   },
-  getPagesInfo(){
+  getPagesInfo() {
     return this.pages();
   }
 });
 
 // Compatibility wrapper. New code should prefer GitHubApi.request().
-async function gh(path,opts={}){
-  return GitHubApi.request(path,opts);
+async function gh(path, opts = {}) {
+  return GitHubApi.request(path, opts);
 }
 
 /* ---------- GitHub/API error helpers ---------- */
@@ -789,7 +847,9 @@ const GitHubErrors = (() => {
     }
 
     if (status === 409) {
-      return conflict || `${action} failed: Git conflict. Refresh, check the branch, and try again.`;
+      return (
+        conflict || `${action} failed: Git conflict. Refresh, check the branch, and try again.`
+      );
     }
 
     if (status === 422) {
@@ -831,72 +891,89 @@ const GitHubErrors = (() => {
 })();
 
 /* ---------- validation ---------- */
-function validationCount(){
-  const v=state.validation||{};
-  return ['config','manifest','markers','runtime'].reduce((sum,k)=>sum+((v[k]||[]).length),0);
+function validationCount() {
+  const v = state.validation || {};
+  return ['config', 'manifest', 'markers', 'runtime'].reduce(
+    (sum, k) => sum + (v[k] || []).length,
+    0
+  );
 }
-function resetLoadValidation(){
-  state.validation.manifest=[];
-  state.validation.markers=[];
-  state.validation.runtime=[];
+function resetLoadValidation() {
+  state.validation.manifest = [];
+  state.validation.markers = [];
+  state.validation.runtime = [];
 }
-function addValidation(kind,msg){
-  if(!state.validation[kind]) state.validation[kind]=[];
-  if(!state.validation[kind].includes(msg)) state.validation[kind].push(msg);
+function addValidation(kind, msg) {
+  if (!state.validation[kind]) state.validation[kind] = [];
+  if (!state.validation[kind].includes(msg)) state.validation[kind].push(msg);
 }
-function allValidationWarnings(){
-  const v=state.validation||{};
-  const out=[];
-  for(const [kind,items] of Object.entries(v)){
-    for(const msg of items||[]) out.push({kind,msg});
+function allValidationWarnings() {
+  const v = state.validation || {};
+  const out = [];
+  for (const [kind, items] of Object.entries(v)) {
+    for (const msg of items || []) out.push({ kind, msg });
   }
   return out;
 }
-function validateGitCMSConfig(cfg,source='config'){
-  const warnings=[];
-  const add=m=>warnings.push(`${source}: ${m}`);
+function validateGitCMSConfig(cfg, source = 'config') {
+  const warnings = [];
+  const add = (m) => warnings.push(`${source}: ${m}`);
 
-  if(!cfg || typeof cfg!=='object' || Array.isArray(cfg)){
+  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) {
     add('gitcms.config.json was not found or is not a JSON object.');
     return warnings;
   }
 
-  if(typeof cfg.workBranch!=='string' || !cfg.workBranch.trim()){
+  if (typeof cfg.workBranch !== 'string' || !cfg.workBranch.trim()) {
     add('missing "workBranch". Recommended value: "content".');
   }
-  if(typeof cfg.manifestPath!=='string' || !cfg.manifestPath.trim()){
+  if (typeof cfg.manifestPath !== 'string' || !cfg.manifestPath.trim()) {
     add('missing "manifestPath". Recommended value: "fragments.json".');
   }
 
-  if(!cfg.media || typeof cfg.media!=='object' || Array.isArray(cfg.media)){
+  if (!cfg.media || typeof cfg.media !== 'object' || Array.isArray(cfg.media)) {
     add('missing "media" object.');
-  }else{
-    if(typeof cfg.media.dir!=='string' || !cfg.media.dir.trim()){
+  } else {
+    if (typeof cfg.media.dir !== 'string' || !cfg.media.dir.trim()) {
       add('missing "media.dir". Recommended for docs publishing: "docs/assets/media".');
     }
-    if(typeof cfg.media.publicPrefix!=='string' || !cfg.media.publicPrefix.trim()){
-      add('missing "media.publicPrefix". Recommended for GitHub Pages project sites: "assets/media/".');
-    }else{
-      const prefix=cfg.media.publicPrefix.trim();
-      const isProjectSite=state.owner && state.repo && state.repo.toLowerCase()!==`${state.owner.toLowerCase()}.github.io`;
-      if(prefix.startsWith('/') && isProjectSite){
-        add(`media.publicPrefix starts with "/". For GitHub Pages project sites, use a relative prefix like "assets/media/".`);
+    if (typeof cfg.media.publicPrefix !== 'string' || !cfg.media.publicPrefix.trim()) {
+      add(
+        'missing "media.publicPrefix". Recommended for GitHub Pages project sites: "assets/media/".'
+      );
+    } else {
+      const prefix = cfg.media.publicPrefix.trim();
+      const isProjectSite =
+        state.owner &&
+        state.repo &&
+        state.repo.toLowerCase() !== `${state.owner.toLowerCase()}.github.io`;
+      if (prefix.startsWith('/') && isProjectSite) {
+        add(
+          `media.publicPrefix starts with "/". For GitHub Pages project sites, use a relative prefix like "assets/media/".`
+        );
       }
     }
   }
 
-  if(cfg.preview!==undefined){
-    if(!cfg.preview || typeof cfg.preview!=='object' || Array.isArray(cfg.preview)){
+  if (cfg.preview !== undefined) {
+    if (!cfg.preview || typeof cfg.preview !== 'object' || Array.isArray(cfg.preview)) {
       add('"preview" must be an object if provided.');
-    }else if(cfg.preview.css!==undefined){
-      const css=Array.isArray(cfg.preview.css) ? cfg.preview.css : (typeof cfg.preview.css==='string' ? [cfg.preview.css] : null);
-      if(!css){
+    } else if (cfg.preview.css !== undefined) {
+      const css = Array.isArray(cfg.preview.css)
+        ? cfg.preview.css
+        : typeof cfg.preview.css === 'string'
+          ? [cfg.preview.css]
+          : null;
+      if (!css) {
         add('"preview.css" must be a string or an array of strings.');
-      }else{
-        css.forEach((p,i)=>{
-          if(typeof p!=='string' || !p.trim()) add(`preview.css entry ${i+1} must be a non-empty string.`);
-          if(typeof p==='string' && p.trim().startsWith('/')){
-            add(`preview.css entry "${p}" starts with "/". For GitHub Pages project sites, use relative paths like "assets/style.css".`);
+      } else {
+        css.forEach((p, i) => {
+          if (typeof p !== 'string' || !p.trim())
+            add(`preview.css entry ${i + 1} must be a non-empty string.`);
+          if (typeof p === 'string' && p.trim().startsWith('/')) {
+            add(
+              `preview.css entry "${p}" starts with "/". For GitHub Pages project sites, use relative paths like "assets/style.css".`
+            );
           }
         });
       }
@@ -905,140 +982,172 @@ function validateGitCMSConfig(cfg,source='config'){
 
   return warnings;
 }
-function validateManifestEntries(manifest,source='manifest'){
-  const warnings=[];
-  const add=m=>warnings.push(`${source}: ${m}`);
+function validateManifestEntries(manifest, source = 'manifest') {
+  const warnings = [];
+  const add = (m) => warnings.push(`${source}: ${m}`);
 
-  if(!Array.isArray(manifest)){
+  if (!Array.isArray(manifest)) {
     add('fragments manifest must be a JSON array.');
     return warnings;
   }
 
-  const seen=new Set();
-  manifest.forEach((entry,i)=>{
-    if(!entry || typeof entry!=='object' || Array.isArray(entry)){
-      add(`entry ${i+1} must be an object.`);
+  const seen = new Set();
+  manifest.forEach((entry, i) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      add(`entry ${i + 1} must be an object.`);
       return;
     }
 
-    const id=String(entry.id||'').trim();
-    const file=String(entry.file||'').trim();
-    const label=String(entry.label||'').trim();
+    const id = String(entry.id || '').trim();
+    const file = String(entry.file || '').trim();
+    const label = String(entry.label || '').trim();
 
-    if(!id) add(`entry ${i+1} is missing "id".`);
-    if(!file) add(`entry ${i+1} (${id||'no id'}) is missing "file".`);
-    if(!label) add(`entry ${i+1} (${id||'no id'}) is missing "label".`);
-    if(id && seen.has(id)) add(`duplicate fragment id "${id}".`);
-    if(id) seen.add(id);
-    if(file.startsWith('/')) add(`fragment "${id}" uses an absolute file path "${file}". Use repo-relative paths like "docs/index.html".`);
+    if (!id) add(`entry ${i + 1} is missing "id".`);
+    if (!file) add(`entry ${i + 1} (${id || 'no id'}) is missing "file".`);
+    if (!label) add(`entry ${i + 1} (${id || 'no id'}) is missing "label".`);
+    if (id && seen.has(id)) add(`duplicate fragment id "${id}".`);
+    if (id) seen.add(id);
+    if (file.startsWith('/'))
+      add(
+        `fragment "${id}" uses an absolute file path "${file}". Use repo-relative paths like "docs/index.html".`
+      );
   });
 
   return warnings;
 }
-function validateManifestMatchesLoaded(manifest,source='manifest'){
-  if(!Array.isArray(manifest)) return;
-  for(const entry of manifest){
-    if(!entry || !entry.id || !entry.file) continue;
-    const f=state.frags.get(entry.id);
-    if(!f){
-      addValidation('manifest', `${source}: fragment "${entry.id}" is listed for "${entry.file}" but was not found in loaded HTML.`);
-    }else if(f.path!==entry.file){
-      addValidation('manifest', `${source}: fragment "${entry.id}" loaded from "${f.path}", but manifest says "${entry.file}".`);
+function validateManifestMatchesLoaded(manifest, source = 'manifest') {
+  if (!Array.isArray(manifest)) return;
+  for (const entry of manifest) {
+    if (!entry || !entry.id || !entry.file) continue;
+    const f = state.frags.get(entry.id);
+    if (!f) {
+      addValidation(
+        'manifest',
+        `${source}: fragment "${entry.id}" is listed for "${entry.file}" but was not found in loaded HTML.`
+      );
+    } else if (f.path !== entry.file) {
+      addValidation(
+        'manifest',
+        `${source}: fragment "${entry.id}" loaded from "${f.path}", but manifest says "${entry.file}".`
+      );
     }
   }
 }
-function validateMarkersInFile(fileRec){
-  const content=fileRec.content||'';
-  const startRe=cmsStartRe();
-  const seen=new Set();
+function validateMarkersInFile(fileRec) {
+  const content = fileRec.content || '';
+  const startRe = cmsStartRe();
+  const seen = new Set();
   let sm;
 
-  while((sm=startRe.exec(content))){
-    const markerId=sm[1];
-    if(seen.has(markerId)){
+  while ((sm = startRe.exec(content))) {
+    const markerId = sm[1];
+    if (seen.has(markerId)) {
       addValidation('markers', `${fileRec.path}: duplicate cms marker id "${markerId}".`);
     }
     seen.add(markerId);
 
-    const afterStart=startRe.lastIndex;
-    const rest=content.slice(afterStart);
-    const endRe=markerEndRegex(markerId);
-    const em=endRe.exec(rest);
+    const afterStart = startRe.lastIndex;
+    const rest = content.slice(afterStart);
+    const endRe = markerEndRegex(markerId);
+    const em = endRe.exec(rest);
 
-    if(!em){
-      addValidation('markers', `${fileRec.path}: cms:start "${markerId}" has no matching cms:end "${markerId}".`);
+    if (!em) {
+      addValidation(
+        'markers',
+        `${fileRec.path}: cms:start "${markerId}" has no matching cms:end "${markerId}".`
+      );
       continue;
     }
 
-    const block=content.slice(afterStart,afterStart+em.index);
-    const first=findFirstElement(block);
-    if(!first){
-      addValidation('markers', `${fileRec.path}: marker "${markerId}" contains no valid HTML element.`);
-      startRe.lastIndex=afterStart+em.index+em[0].length;
+    const block = content.slice(afterStart, afterStart + em.index);
+    const first = findFirstElement(block);
+    if (!first) {
+      addValidation(
+        'markers',
+        `${fileRec.path}: marker "${markerId}" contains no valid HTML element.`
+      );
+      startRe.lastIndex = afterStart + em.index + em[0].length;
       continue;
     }
 
-    const close=findMatchingClose(block,first.tag,first.openEnd+1);
-    if(!close){
-      addValidation('markers', `${fileRec.path}: marker "${markerId}" has an unclosed <${first.tag}> element.`);
-      startRe.lastIndex=afterStart+em.index+em[0].length;
+    const close = findMatchingClose(block, first.tag, first.openEnd + 1);
+    if (!close) {
+      addValidation(
+        'markers',
+        `${fileRec.path}: marker "${markerId}" has an unclosed <${first.tag}> element.`
+      );
+      startRe.lastIndex = afterStart + em.index + em[0].length;
       continue;
     }
 
-    const dataId=attrGet(first.attrs,'data-fragment');
-    if(dataId && dataId!==markerId){
-      addValidation('markers', `${fileRec.path}: cms marker "${markerId}" does not match data-fragment="${dataId}".`);
+    const dataId = attrGet(first.attrs, 'data-fragment');
+    if (dataId && dataId !== markerId) {
+      addValidation(
+        'markers',
+        `${fileRec.path}: cms marker "${markerId}" does not match data-fragment="${dataId}".`
+      );
     }
-    if(!dataId){
-      addValidation('markers', `${fileRec.path}: marker "${markerId}" should include data-fragment="${markerId}".`);
+    if (!dataId) {
+      addValidation(
+        'markers',
+        `${fileRec.path}: marker "${markerId}" should include data-fragment="${markerId}".`
+      );
     }
-    if(!attrGet(first.attrs,'data-label')){
-      addValidation('markers', `${fileRec.path}: marker "${markerId}" should include data-label for a clearer sidebar label.`);
+    if (!attrGet(first.attrs, 'data-label')) {
+      addValidation(
+        'markers',
+        `${fileRec.path}: marker "${markerId}" should include data-label for a clearer sidebar label.`
+      );
     }
 
-    startRe.lastIndex=afterStart+em.index+em[0].length;
+    startRe.lastIndex = afterStart + em.index + em[0].length;
   }
 }
-function renderValidationBox(){
-  const box=el('validationBox');
-  if(!box) return;
-  const warnings=allValidationWarnings();
+function renderValidationBox() {
+  const box = el('validationBox');
+  if (!box) return;
+  const warnings = allValidationWarnings();
 
-  if(!warnings.length){
+  if (!warnings.length) {
     box.classList.remove('show');
-    box.innerHTML='';
+    box.innerHTML = '';
     return;
   }
 
-  const rows=warnings.slice(0,20).map(w=>`<li><span class="mono">${esc(w.kind)}</span>: ${esc(w.msg)}</li>`).join('');
-  const more=warnings.length>20 ? `<li>…and ${warnings.length-20} more warning${warnings.length-20===1?'':'s'}</li>` : '';
-  box.innerHTML=`<b>${warnings.length} validation warning${warnings.length===1?'':'s'}</b><ul>${rows}${more}</ul>`;
+  const rows = warnings
+    .slice(0, 20)
+    .map((w) => `<li><span class="mono">${esc(w.kind)}</span>: ${esc(w.msg)}</li>`)
+    .join('');
+  const more =
+    warnings.length > 20
+      ? `<li>…and ${warnings.length - 20} more warning${warnings.length - 20 === 1 ? '' : 's'}</li>`
+      : '';
+  box.innerHTML = `<b>${warnings.length} validation warning${warnings.length === 1 ? '' : 's'}</b><ul>${rows}${more}</ul>`;
   box.classList.add('show');
 }
 
-
 const Validation = Object.freeze({
-  count:validationCount,
-  resetLoad:resetLoadValidation,
-  add:addValidation,
-  all:allValidationWarnings,
-  validateConfig:validateGitCMSConfig,
+  count: validationCount,
+  resetLoad: resetLoadValidation,
+  add: addValidation,
+  all: allValidationWarnings,
+  validateConfig: validateGitCMSConfig,
   validateManifestEntries,
   validateManifestMatchesLoaded,
   validateMarkersInFile,
-  renderBox:renderValidationBox
+  renderBox: renderValidationBox
 });
 
 /* ---------- config utility helpers ---------- */
 const ConfigUtils = (() => {
   function parsePreviewCssInput(value) {
     if (Array.isArray(value)) {
-      return value.map(item => String(item).trim()).filter(Boolean);
+      return value.map((item) => String(item).trim()).filter(Boolean);
     }
 
     return String(value || '')
       .split(',')
-      .map(item => item.trim())
+      .map((item) => item.trim())
       .filter(Boolean);
   }
 
@@ -1053,10 +1162,10 @@ const ConfigUtils = (() => {
   }
 
   function shouldPersistWorkBranch(config, workBranch, defaultWorkBranch = 'content') {
-    return !!(
-      config &&
-      Object.prototype.hasOwnProperty.call(config, 'workBranch')
-    ) || workBranch !== defaultWorkBranch;
+    return (
+      !!(config && Object.prototype.hasOwnProperty.call(config, 'workBranch')) ||
+      workBranch !== defaultWorkBranch
+    );
   }
 
   function buildNextGitCMSConfig(existingConfig, settings) {
@@ -1123,239 +1232,251 @@ const ConfigUtils = (() => {
   CMS_START_RE across nested parser calls, because a malformed marker can reset
   lastIndex and make the loader appear stuck on "Loading...".
 */
-const SECTION_RE=/(<section\s([^>]*)>)([\s\S]*?)<\/section>/gi;
+const SECTION_RE = /(<section\s([^>]*)>)([\s\S]*?)<\/section>/gi;
 
-function reEsc(s){return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
-function cmsStartRe(){return /<!--\s*cms:start\s+([A-Za-z0-9_.:-]+)\s*-->/gi;}
+function reEsc(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function cmsStartRe() {
+  return /<!--\s*cms:start\s+([A-Za-z0-9_.:-]+)\s*-->/gi;
+}
 
-function classHasFragment(attrs){
-  const m=attrs.match(/class\s*=\s*["']([^"']*)["']/i);
+function classHasFragment(attrs) {
+  const m = attrs.match(/class\s*=\s*["']([^"']*)["']/i);
   return m ? /\bfragment\b/.test(m[1]) : false;
 }
-function attrGet(attrs,name){
-  const m=attrs.match(new RegExp(name+'\\s*=\\s*["\']([^"\']*)["\']','i'));
-  return m?m[1]:'';
+function attrGet(attrs, name) {
+  const m = attrs.match(new RegExp(name + '\\s*=\\s*["\']([^"\']*)["\']', 'i'));
+  return m ? m[1] : '';
 }
-function attrsDeclareFragment(attrs){
-  return !!attrGet(attrs,'data-fragment') || classHasFragment(attrs);
+function attrsDeclareFragment(attrs) {
+  return !!attrGet(attrs, 'data-fragment') || classHasFragment(attrs);
 }
-function fragmentIdFromAttrs(attrs,fallback=''){
-  return attrGet(attrs,'data-fragment') || attrGet(attrs,'id') || fallback;
+function fragmentIdFromAttrs(attrs, fallback = '') {
+  return attrGet(attrs, 'data-fragment') || attrGet(attrs, 'id') || fallback;
 }
-function fragmentLabelFor(id,attrs){
-  const manEntry = state.manifest && state.manifest.find(e=>e.id===id);
-  return manEntry ? manEntry.label : (attrGet(attrs,'data-label') || id);
+function fragmentLabelFor(id, attrs) {
+  const manEntry = state.manifest && state.manifest.find((e) => e.id === id);
+  return manEntry ? manEntry.label : attrGet(attrs, 'data-label') || id;
 }
-function findTagEnd(src,start){
-  let quote=null;
-  for(let i=start;i<src.length;i++){
-    const ch=src[i];
-    if(quote){
-      if(ch===quote) quote=null;
-    }else if(ch==='"' || ch==="'"){
-      quote=ch;
-    }else if(ch==='>'){
+function findTagEnd(src, start) {
+  let quote = null;
+  for (let i = start; i < src.length; i++) {
+    const ch = src[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '>') {
       return i;
     }
   }
   return -1;
 }
-function findFirstElement(block){
-  const re=/<([A-Za-z][A-Za-z0-9:-]*)(?=[\s>/])/g;
+function findFirstElement(block) {
+  const re = /<([A-Za-z][A-Za-z0-9:-]*)(?=[\s>/])/g;
   let m;
-  while((m=re.exec(block))){
-    const openStart=m.index;
-    const openEnd=findTagEnd(block,openStart);
-    if(openEnd<0) continue;
-    const tag=m[1];
-    const openTag=block.slice(openStart,openEnd+1);
-    const attrs=block.slice(openStart+1+tag.length,openEnd);
-    return {tag,openStart,openEnd,openTag,attrs};
+  while ((m = re.exec(block))) {
+    const openStart = m.index;
+    const openEnd = findTagEnd(block, openStart);
+    if (openEnd < 0) continue;
+    const tag = m[1];
+    const openTag = block.slice(openStart, openEnd + 1);
+    const attrs = block.slice(openStart + 1 + tag.length, openEnd);
+    return { tag, openStart, openEnd, openTag, attrs };
   }
   return null;
 }
-function findMatchingClose(block,tagName,from){
-  const re=new RegExp(`<\\/?${reEsc(tagName)}(?=[\\s>/])`,'gi');
-  re.lastIndex=from;
-  let depth=1,m;
-  while((m=re.exec(block))){
-    const idx=m.index;
-    const isClose=block[idx+1]==='/';
-    const tagEnd=findTagEnd(block,idx);
-    if(tagEnd<0) return null;
+function findMatchingClose(block, tagName, from) {
+  const re = new RegExp(`<\\/?${reEsc(tagName)}(?=[\\s>/])`, 'gi');
+  re.lastIndex = from;
+  let depth = 1,
+    m;
+  while ((m = re.exec(block))) {
+    const idx = m.index;
+    const isClose = block[idx + 1] === '/';
+    const tagEnd = findTagEnd(block, idx);
+    if (tagEnd < 0) return null;
 
-    if(isClose){
+    if (isClose) {
       depth--;
-      if(depth===0){
+      if (depth === 0) {
         return {
-          closeStart:idx,
-          closeEnd:tagEnd+1,
-          closeTag:block.slice(idx,tagEnd+1)
+          closeStart: idx,
+          closeEnd: tagEnd + 1,
+          closeTag: block.slice(idx, tagEnd + 1)
         };
       }
-    }else{
-      const open=block.slice(idx,tagEnd+1);
-      if(!/\/\s*>$/.test(open)) depth++;
+    } else {
+      const open = block.slice(idx, tagEnd + 1);
+      if (!/\/\s*>$/.test(open)) depth++;
     }
-    re.lastIndex=tagEnd+1;
+    re.lastIndex = tagEnd + 1;
   }
   return null;
 }
-function markerEndRegex(id){
-  return new RegExp(`<!--\\s*cms:end\\s+${reEsc(id)}\\s*-->`,'i');
+function markerEndRegex(id) {
+  return new RegExp(`<!--\\s*cms:end\\s+${reEsc(id)}\\s*-->`, 'i');
 }
-function findMarkedFragments(content,wantedId=null){
-  const out=[];
-  const startRe=cmsStartRe();
+function findMarkedFragments(content, wantedId = null) {
+  const out = [];
+  const startRe = cmsStartRe();
   let sm;
 
-  while((sm=startRe.exec(content))){
-    const markerId=sm[1];
+  while ((sm = startRe.exec(content))) {
+    const markerId = sm[1];
 
     // If searching for one id, skip other markers. Since startRe is local,
     // skipping still advances safely.
-    if(wantedId && markerId!==wantedId) continue;
+    if (wantedId && markerId !== wantedId) continue;
 
-    const afterStart=startRe.lastIndex;
-    const endRe=markerEndRegex(markerId);
-    const rest=content.slice(afterStart);
-    const em=endRe.exec(rest);
+    const afterStart = startRe.lastIndex;
+    const endRe = markerEndRegex(markerId);
+    const rest = content.slice(afterStart);
+    const em = endRe.exec(rest);
 
     // Malformed marker: no matching end marker. Skip it, but never reset
     // the scan position. This prevents infinite "Loading..." hangs.
-    if(!em) continue;
+    if (!em) continue;
 
-    const blockStart=afterStart;
-    const blockEnd=afterStart+em.index;
-    const fullStart=sm.index;
-    const fullEnd=blockEnd+em[0].length;
-    const markerStart=content.slice(fullStart,blockStart);
-    const markerEnd=content.slice(blockEnd,fullEnd);
-    const block=content.slice(blockStart,blockEnd);
+    const blockStart = afterStart;
+    const blockEnd = afterStart + em.index;
+    const fullStart = sm.index;
+    const fullEnd = blockEnd + em[0].length;
+    const markerStart = content.slice(fullStart, blockStart);
+    const markerEnd = content.slice(blockEnd, fullEnd);
+    const block = content.slice(blockStart, blockEnd);
 
-    const first=findFirstElement(block);
-    if(!first){
-      startRe.lastIndex=fullEnd;
+    const first = findFirstElement(block);
+    if (!first) {
+      startRe.lastIndex = fullEnd;
       continue;
     }
 
-    const close=findMatchingClose(block,first.tag,first.openEnd+1);
-    if(!close){
-      startRe.lastIndex=fullEnd;
+    const close = findMatchingClose(block, first.tag, first.openEnd + 1);
+    if (!close) {
+      startRe.lastIndex = fullEnd;
       continue;
     }
 
-    const attrs=first.attrs;
-    const id=fragmentIdFromAttrs(attrs,markerId);
-    if(!id){
-      startRe.lastIndex=fullEnd;
+    const attrs = first.attrs;
+    const id = fragmentIdFromAttrs(attrs, markerId);
+    if (!id) {
+      startRe.lastIndex = fullEnd;
       continue;
     }
-    if(wantedId && id!==wantedId && markerId!==wantedId){
-      startRe.lastIndex=fullEnd;
+    if (wantedId && id !== wantedId && markerId !== wantedId) {
+      startRe.lastIndex = fullEnd;
       continue;
     }
 
     out.push({
-      mode:'marker',
+      mode: 'marker',
       markerId,
       id,
-      tag:first.tag,
+      tag: first.tag,
       attrs,
-      openTag:first.openTag,
-      closeTag:close.closeTag,
-      innerHTML:block.slice(first.openEnd+1,close.closeStart),
-      blockPrefix:block.slice(0,first.openStart),
-      blockSuffix:block.slice(close.closeEnd),
+      openTag: first.openTag,
+      closeTag: close.closeTag,
+      innerHTML: block.slice(first.openEnd + 1, close.closeStart),
+      blockPrefix: block.slice(0, first.openStart),
+      blockSuffix: block.slice(close.closeEnd),
       markerStart,
       markerEnd,
       fullStart,
       fullEnd
     });
 
-    startRe.lastIndex=fullEnd;
-    if(wantedId) break;
+    startRe.lastIndex = fullEnd;
+    if (wantedId) break;
   }
 
   return out;
 }
-function extractMarkedFragment(content,wantedId=null){
-  return findMarkedFragments(content,wantedId)[0] || null;
+function extractMarkedFragment(content, wantedId = null) {
+  return findMarkedFragments(content, wantedId)[0] || null;
 }
-function rebuildFragment(f){
-  return `${f.openTag}${f.innerHTML}${f.closeTag||'</section>'}`;
+function rebuildFragment(f) {
+  return `${f.openTag}${f.innerHTML}${f.closeTag || '</section>'}`;
 }
-function rebuildMarkedFragmentFromParts(parts,innerHTML){
-  return parts.markerStart + parts.blockPrefix + parts.openTag + innerHTML + parts.closeTag + parts.blockSuffix + parts.markerEnd;
+function rebuildMarkedFragmentFromParts(parts, innerHTML) {
+  return (
+    parts.markerStart +
+    parts.blockPrefix +
+    parts.openTag +
+    innerHTML +
+    parts.closeTag +
+    parts.blockSuffix +
+    parts.markerEnd
+  );
 }
 
 /* Parse a file's content into fragment objects, registering them on
    the canonical file record. Marker fragments are preferred; old section
    fragments remain supported as fallback. */
-function parseFileFragments(fileRec){
+function parseFileFragments(fileRec) {
   validateMarkersInFile(fileRec);
-  const ids=[];
-  const seen=new Set();
+  const ids = [];
+  const seen = new Set();
 
   // Preferred parser: explicit cms:start/cms:end boundaries.
-  for(const frag of findMarkedFragments(fileRec.content)){
-    const id=frag.id;
-    if(seen.has(id)) continue;
+  for (const frag of findMarkedFragments(fileRec.content)) {
+    const id = frag.id;
+    if (seen.has(id)) continue;
     seen.add(id);
 
-    const f={
+    const f = {
       id,
-      markerId:frag.markerId,
-      mode:'marker',
-      classes:attrGet(frag.attrs,'class'),
-      label:fragmentLabelFor(id,frag.attrs),
-      path:fileRec.path,
-      file:fileRec.path.split('/').pop(),
-      openTag:frag.openTag,
-      closeTag:frag.closeTag,
-      innerHTML:frag.innerHTML,
-      origHTML:frag.innerHTML,
-      dirty:false,
+      markerId: frag.markerId,
+      mode: 'marker',
+      classes: attrGet(frag.attrs, 'class'),
+      label: fragmentLabelFor(id, frag.attrs),
+      path: fileRec.path,
+      file: fileRec.path.split('/').pop(),
+      openTag: frag.openTag,
+      closeTag: frag.closeTag,
+      innerHTML: frag.innerHTML,
+      origHTML: frag.innerHTML,
+      dirty: false
     };
-    state.frags.set(id,f);
+    state.frags.set(id, f);
     ids.push(id);
   }
 
   // Backward-compatible parser: <section class="fragment"> or data-fragment.
-  SECTION_RE.lastIndex=0;
+  SECTION_RE.lastIndex = 0;
   let m;
-  while((m=SECTION_RE.exec(fileRec.content))){
-    const openTag=m[1];
-    const attrs=m[2];
-    if(!attrsDeclareFragment(attrs)) continue;
+  while ((m = SECTION_RE.exec(fileRec.content))) {
+    const openTag = m[1];
+    const attrs = m[2];
+    if (!attrsDeclareFragment(attrs)) continue;
 
-    const id=fragmentIdFromAttrs(attrs);
-    if(!id || seen.has(id)) continue;
+    const id = fragmentIdFromAttrs(attrs);
+    if (!id || seen.has(id)) continue;
     seen.add(id);
 
-    const inner=m[3];
-    const f={
+    const inner = m[3];
+    const f = {
       id,
-      markerId:null,
-      mode:'section',
-      classes:attrGet(attrs,'class'),
-      label:fragmentLabelFor(id,attrs),
-      path:fileRec.path,
-      file:fileRec.path.split('/').pop(),
+      markerId: null,
+      mode: 'section',
+      classes: attrGet(attrs, 'class'),
+      label: fragmentLabelFor(id, attrs),
+      path: fileRec.path,
+      file: fileRec.path.split('/').pop(),
       openTag,
-      closeTag:'</section>',
-      innerHTML:inner,
-      origHTML:inner,
-      dirty:false,
+      closeTag: '</section>',
+      innerHTML: inner,
+      origHTML: inner,
+      dirty: false
     };
-    state.frags.set(id,f);
+    state.frags.set(id, f);
     ids.push(id);
   }
 
-  fileRec.fragments=ids;
+  fileRec.fragments = ids;
   return ids;
 }
-
 
 const FragmentParser = Object.freeze({
   findMarkedFragments,
@@ -1369,86 +1490,96 @@ const FragmentParser = Object.freeze({
 // Thin browser wrappers around Paths/config helpers.
 // Kept separate from 00-core.js so core stays focused on constants/state/Store.
 
-function ghPath(path){
+function ghPath(path) {
   return Paths.githubPath(path);
 }
-function normalizeRepoPath(path){
+function normalizeRepoPath(path) {
   return Paths.normalizeRepoPath(path);
 }
-function defaultPublicPrefixFor(dir){
+function defaultPublicPrefixFor(dir) {
   return Paths.defaultPublicPrefixFor(dir);
 }
-function normalizePublicPrefix(prefix,dir){
-  return Paths.normalizePublicPrefix(prefix,dir);
+function normalizePublicPrefix(prefix, dir) {
+  return Paths.normalizePublicPrefix(prefix, dir);
 }
-function mediaDir(){
-  const m=configMedia();
+function mediaDir() {
+  const m = configMedia();
   return Paths.normalizeRepoPath((m && m.dir) || DEFAULT_MEDIA_DIR);
 }
-function mediaPrefix(){
-  const m=configMedia();
-  const raw=(m && m.publicPrefix) || '';
-  return Paths.normalizePublicPrefix(raw,mediaDir());
+function mediaPrefix() {
+  const m = configMedia();
+  const raw = (m && m.publicPrefix) || '';
+  return Paths.normalizePublicPrefix(raw, mediaDir());
 }
 
-function contentAssetRef(){
-  return state.contentTree && state.contentTree.commitSha ? state.contentTree.commitSha : state.workBranch;
+function contentAssetRef() {
+  return state.contentTree && state.contentTree.commitSha
+    ? state.contentTree.commitSha
+    : state.workBranch;
 }
 
-function previewCssList(){
-  const p=gitcmsConfig && gitcmsConfig.preview;
-  if(!p || typeof p!=='object') return [];
-  const css=Array.isArray(p.css) ? p.css : (typeof p.css==='string' ? [p.css] : []);
-  return css.map(x=>String(x).trim()).filter(Boolean);
+function previewCssList() {
+  const p = gitcmsConfig && gitcmsConfig.preview;
+  if (!p || typeof p !== 'object') return [];
+  const css = Array.isArray(p.css) ? p.css : typeof p.css === 'string' ? [p.css] : [];
+  return css.map((x) => String(x).trim()).filter(Boolean);
 }
-function publicPathToRepoPath(publicPath){
+function publicPathToRepoPath(publicPath) {
   return Paths.publicPathToRepoPath(publicPath);
 }
-function rawUrlForRepoPath(path){
-  return Paths.rawUrlForRepoPath(path,contentAssetRef());
+function rawUrlForRepoPath(path) {
+  return Paths.rawUrlForRepoPath(path, contentAssetRef());
 }
-function previewCssTags(){
-  if(!state.owner || !state.repo) return '';
-  return previewCssList().map(path=>{
-    const repoPath=Paths.publicPathToRepoPath(path);
-    const href=Paths.rawUrlForRepoPath(repoPath,contentAssetRef()) + '?v=' + Date.now();
-    return `<link rel="stylesheet" href="${escAttr(href)}">`;
-  }).join('\n');
-}
-
-function mediaPublicUrl(path){
-  return Paths.mediaPublicUrl(path,mediaPrefix());
+function previewCssTags() {
+  if (!state.owner || !state.repo) return '';
+  return previewCssList()
+    .map((path) => {
+      const repoPath = Paths.publicPathToRepoPath(path);
+      const href = Paths.rawUrlForRepoPath(repoPath, contentAssetRef()) + '?v=' + Date.now();
+      return `<link rel="stylesheet" href="${escAttr(href)}">`;
+    })
+    .join('\n');
 }
 
-function mimeFromName(name){
-  const n=name.toLowerCase();
-  if(n.endsWith('.svg')) return 'image/svg+xml';
-  if(n.endsWith('.png')) return 'image/png';
-  if(n.endsWith('.webp')) return 'image/webp';
-  if(n.endsWith('.gif')) return 'image/gif';
-  if(n.endsWith('.avif')) return 'image/avif';
+function mediaPublicUrl(path) {
+  return Paths.mediaPublicUrl(path, mediaPrefix());
+}
+
+function mimeFromName(name) {
+  const n = name.toLowerCase();
+  if (n.endsWith('.svg')) return 'image/svg+xml';
+  if (n.endsWith('.png')) return 'image/png';
+  if (n.endsWith('.webp')) return 'image/webp';
+  if (n.endsWith('.gif')) return 'image/gif';
+  if (n.endsWith('.avif')) return 'image/avif';
   return 'image/jpeg';
 }
 
 /* ---------- connect / load ---------- */
-async function connect(){
-  const url=el('repoUrl').value, tok=el('token').value.trim();
-  const parsed=parseRepoUrl(url);
-  el('loginErr').style.display='none';
-  const validationMsg=ConnectUtils.connectValidation({repoUrl:url,token:tok});
-  if(validationMsg){ showLoginErr(validationMsg); return; }
+async function connect() {
+  const url = el('repoUrl').value,
+    tok = el('token').value.trim();
+  const parsed = parseRepoUrl(url);
+  el('loginErr').style.display = 'none';
+  const validationMsg = ConnectUtils.connectValidation({ repoUrl: url, token: tok });
+  if (validationMsg) {
+    showLoginErr(validationMsg);
+    return;
+  }
 
-  Store.setRepo(parsed.owner,parsed.repo,tok);
-  const btn=el('connectBtn'); btn.disabled=true; btn.textContent='Connecting…';
+  Store.setRepo(parsed.owner, parsed.repo, tok);
+  const btn = el('connectBtn');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
 
-  try{
+  try {
     // resolve default branch
-    const repoInfo=await GitHubApi.getRepo();
-    Store.setDefaultBranch(repoInfo.default_branch||'main');
+    const repoInfo = await GitHubApi.getRepo();
+    Store.setDefaultBranch(repoInfo.default_branch || 'main');
 
     // Load config from main FIRST so we know workBranch and manifestPath before
     // ensureWorkBranch() or any branch operations.
-    const cfg=await loadGitCMSConfig(true,[state.defaultBranch]);
+    const cfg = await loadGitCMSConfig(true, [state.defaultBranch]);
     applyConfig(cfg);
 
     // ensure content/work branch exists
@@ -1456,167 +1587,191 @@ async function connect(){
 
     // From here on, content/work branch is the only CMS source tree.
     Store.clearContentTree();
-    await GitHubApi.getBranchTreeSnapshot(state.workBranch,{force:true});
+    await GitHubApi.getBranchTreeSnapshot(state.workBranch, { force: true });
 
-    const branchCfg=await loadGitCMSConfig(true,[state.workBranch]);
+    const branchCfg = await loadGitCMSConfig(true, [state.workBranch]);
     applyConfig(branchCfg);
 
     // persist creds
-    localStorage.setItem(LS_REPO,url.trim());
-    localStorage.setItem(LS_TOKEN,enc(tok));
+    localStorage.setItem(LS_REPO, url.trim());
+    localStorage.setItem(LS_TOKEN, enc(tok));
 
-    el('login').style.display='none';
-    el('app').style.display='flex';
-    el('repoBadgeTxt').textContent=`${state.owner}/${state.repo}`;
-    el('repoBadge').title='Content/site repository: '+`${state.owner}/${state.repo}`;
+    el('login').style.display = 'none';
+    el('app').style.display = 'flex';
+    el('repoBadgeTxt').textContent = `${state.owner}/${state.repo}`;
+    el('repoBadge').title = 'Content/site repository: ' + `${state.owner}/${state.repo}`;
     updateBranchLabels();
     renderEditorSnippetControls();
 
     await loadAll();
-  }catch(e){
+  } catch (e) {
     showLoginErr(loginErrMsg(e));
-  }finally{
-    btn.disabled=false; btn.textContent='Connect';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Connect';
   }
 }
 
 /* Apply workBranch and manifestPath from loaded config into state. */
-function applyConfig(cfg){
-  const patch=ConnectUtils.configStatePatch(cfg);
-  if(patch.workBranch) Store.setWorkBranch(patch.workBranch);
-  if(patch.manifestPath) Store.setManifestPath(patch.manifestPath);
+function applyConfig(cfg) {
+  const patch = ConnectUtils.configStatePatch(cfg);
+  if (patch.workBranch) Store.setWorkBranch(patch.workBranch);
+  if (patch.manifestPath) Store.setManifestPath(patch.manifestPath);
 }
 
 /* Update all branch-name labels in the UI after connect or config save. */
-function branchLabel(name){
+function branchLabel(name) {
   return ConnectUtils.branchLabel(name);
 }
-function updateBranchLabels(){
-  el('workBranchBadge').textContent=state.workBranch;
-  el('publishTargetTxt').textContent=state.defaultBranch;
-  const saveBtn=el('saveBtn');
-  if(saveBtn) saveBtn.textContent=`Save → ${branchLabel(state.workBranch)}`;
-  const resetBtn=el('resetDraftBtn');
-  if(resetBtn) resetBtn.textContent=`Reset ${state.workBranch} from ${state.defaultBranch}`;
-  const commitTitle=document.querySelector('#commitModal h3');
-  if(commitTitle) commitTitle.textContent=`Commit to ${state.workBranch}`;
-  const settingsNote=el('settingsWorkBranchNote');
-  if(settingsNote) settingsNote.textContent=state.workBranch;
-  const cfgBranch=el('cfgWorkBranch');
-  if(cfgBranch) cfgBranch.textContent=state.workBranch;
-  const mediaNote=el('mediaBranchNote');
-  if(mediaNote) mediaNote.textContent=state.workBranch;
-  const pubTitle=document.querySelector('#pubModal h3');
-  if(pubTitle) pubTitle.textContent=`Publish to ${state.defaultBranch}`;
-  const pubDesc=document.querySelector('#pubModal .mdesc');
-  if(pubDesc){
-    pubDesc.innerHTML=`Deploy <b>${esc(state.workBranch)}</b> to <b>${esc(state.defaultBranch)}</b>. The GitHub Action will deploy <span class="mono">docs/</span> to Pages.`;
+function updateBranchLabels() {
+  el('workBranchBadge').textContent = state.workBranch;
+  el('publishTargetTxt').textContent = state.defaultBranch;
+  const saveBtn = el('saveBtn');
+  if (saveBtn) saveBtn.textContent = `Save → ${branchLabel(state.workBranch)}`;
+  const resetBtn = el('resetDraftBtn');
+  if (resetBtn) resetBtn.textContent = `Reset ${state.workBranch} from ${state.defaultBranch}`;
+  const commitTitle = document.querySelector('#commitModal h3');
+  if (commitTitle) commitTitle.textContent = `Commit to ${state.workBranch}`;
+  const settingsNote = el('settingsWorkBranchNote');
+  if (settingsNote) settingsNote.textContent = state.workBranch;
+  const cfgBranch = el('cfgWorkBranch');
+  if (cfgBranch) cfgBranch.textContent = state.workBranch;
+  const mediaNote = el('mediaBranchNote');
+  if (mediaNote) mediaNote.textContent = state.workBranch;
+  const pubTitle = document.querySelector('#pubModal h3');
+  if (pubTitle) pubTitle.textContent = `Publish to ${state.defaultBranch}`;
+  const pubDesc = document.querySelector('#pubModal .mdesc');
+  if (pubDesc) {
+    pubDesc.innerHTML = `Deploy <b>${esc(state.workBranch)}</b> to <b>${esc(state.defaultBranch)}</b>. The GitHub Action will deploy <span class="mono">docs/</span> to Pages.`;
   }
 }
 
-function loginErrMsg(e){
-  if(e.status===401) return 'Authentication failed — check the token.';
-  if(e.status===404) return 'Repo not found, or the token lacks access to it.';
-  return 'Connection failed: '+e.message;
+function loginErrMsg(e) {
+  if (e.status === 401) return 'Authentication failed — check the token.';
+  if (e.status === 404) return 'Repo not found, or the token lacks access to it.';
+  return 'Connection failed: ' + e.message;
 }
-function showLoginErr(m){ const x=el('loginErr'); x.textContent=m; x.style.display='block'; }
+function showLoginErr(m) {
+  const x = el('loginErr');
+  x.textContent = m;
+  x.style.display = 'block';
+}
 
-async function ensureWorkBranch(){
-  try{
+async function ensureWorkBranch() {
+  try {
     await GitHubApi.getBranch(state.workBranch);
     return;
-  }catch(e){
-    if(e.status!==404) throw e;
+  } catch (e) {
+    if (e.status !== 404) throw e;
   }
 
   // If this repo already used the old "draft" branch, seed the new content
   // branch from it so unpublished CMS work is not lost during the rename.
-  let sourceBranch=state.defaultBranch;
-  if(state.workBranch!==LEGACY_WORK_BRANCH){
-    try{
+  let sourceBranch = state.defaultBranch;
+  if (state.workBranch !== LEGACY_WORK_BRANCH) {
+    try {
       await GitHubApi.getBranch(LEGACY_WORK_BRANCH);
-      sourceBranch=LEGACY_WORK_BRANCH;
-    }catch(e){
-      if(e.status!==404) throw e;
+      sourceBranch = LEGACY_WORK_BRANCH;
+    } catch (e) {
+      if (e.status !== 404) throw e;
     }
   }
 
-  const ref=await GitHubApi.getRef(sourceBranch);
-  await GitHubApi.createBranchFromSha(state.workBranch,ref.object.sha);
-  toast(`Created ${state.workBranch} branch from ${sourceBranch}`,'ok');
+  const ref = await GitHubApi.getRef(sourceBranch);
+  await GitHubApi.createBranchFromSha(state.workBranch, ref.object.sha);
+  toast(`Created ${state.workBranch} branch from ${sourceBranch}`, 'ok');
 }
 
 /* FIX #2 + hardening: read the manifest from BOTH branches.
    Returns the work-branch manifest if present, with default-branch fallback. */
-async function loadManifest(){
-  async function read(ref){
-    try{
-      const r=await GitHubApi.getFile(state.manifestPath,ref);
-      let parsed=null;
-      try{
-        parsed=JSON.parse(dec(r.content));
-      }catch(parseErr){
-        addValidation('manifest', `${state.manifestPath} on ${ref}: invalid JSON — ${parseErr.message}`);
+async function loadManifest() {
+  async function read(ref) {
+    try {
+      const r = await GitHubApi.getFile(state.manifestPath, ref);
+      let parsed = null;
+      try {
+        parsed = JSON.parse(dec(r.content));
+      } catch (parseErr) {
+        addValidation(
+          'manifest',
+          `${state.manifestPath} on ${ref}: invalid JSON — ${parseErr.message}`
+        );
         return null;
       }
-      state.validation.manifest.push(...validateManifestEntries(parsed,`${state.manifestPath} on ${ref}`));
+      state.validation.manifest.push(
+        ...validateManifestEntries(parsed, `${state.manifestPath} on ${ref}`)
+      );
       return Array.isArray(parsed) ? parsed : null;
-    }catch(e){ if(e.status===404) return null; throw e; }
+    } catch (e) {
+      if (e.status === 404) return null;
+      throw e;
+    }
   }
 
   // Strict CMS source of truth: content/work branch only.
   // Do not silently load fragments from main/default, because that can show stale
   // live content in the admin after saves or publish operations.
-  const workMan=await read(state.workBranch);
-  return {workMan,defaultMan:null};
+  const workMan = await read(state.workBranch);
+  return { workMan, defaultMan: null };
 }
 
-async function fetchFile(path){
-  try{
-    const r=await GitHubApi.getFile(path,state.workBranch);
-    return {path, content:dec(r.content), src:state.workBranch, shaMain:null, shaDraft:r.sha, fragments:[]};
-  }catch(e){
-    if(e.status===404) return null;
+async function fetchFile(path) {
+  try {
+    const r = await GitHubApi.getFile(path, state.workBranch);
+    return {
+      path,
+      content: dec(r.content),
+      src: state.workBranch,
+      shaMain: null,
+      shaDraft: r.sha,
+      fragments: []
+    };
+  } catch (e) {
+    if (e.status === 404) return null;
     throw e;
   }
 }
 
-async function loadAll(){
+async function loadAll() {
   resetLoadValidation();
-  setStatus('Loading…',true);
+  setStatus('Loading…', true);
   Store.clearLoadedContent();
   Store.clearContentTree();
-  await GitHubApi.getBranchTreeSnapshot(state.workBranch,{force:true});
+  await GitHubApi.getBranchTreeSnapshot(state.workBranch, { force: true });
   el('banner').classList.remove('show');
   el('divergeBanner').classList.remove('show');
 
-  try{
-    const {workMan,defaultMan}=await loadManifest();
+  try {
+    const { workMan, defaultMan } = await loadManifest();
 
     // Strict source of truth: load only from the content/work branch.
     // Never fall back to main/default for editable source files.
-    let used=null;
-    if(workMan){
-      const result=await tryLoadFromManifest(workMan);
-      if(result.count>0){
-        used={manifest:workMan,from:state.workBranch};
-      }else{
-        state.files.clear(); state.frags.clear();
+    let used = null;
+    if (workMan) {
+      const result = await tryLoadFromManifest(workMan);
+      if (result.count > 0) {
+        used = { manifest: workMan, from: state.workBranch };
+      } else {
+        state.files.clear();
+        state.frags.clear();
       }
     }
 
-    if(!used){
+    if (!used) {
       // No manifest worked (or none existed) → full tree scan from work branch.
       await tryTreeScan();
-      if(state.frags.size===0 && (workMan||defaultMan)){
+      if (state.frags.size === 0 && (workMan || defaultMan)) {
         // Manifest(s) existed but matched nothing anywhere.
-        setStatus('Manifest matched no fragments',false);
-        toast(`Manifest found on ${state.workBranch}, but no matching fragments in content files`,'err');
-      }else if(!workMan && !defaultMan){
+        setStatus('Manifest matched no fragments', false);
+        toast(
+          `Manifest found on ${state.workBranch}, but no matching fragments in content files`,
+          'err'
+        );
+      } else if (!workMan && !defaultMan) {
         el('banner').classList.add('show'); // genuine no-manifest case
       }
       state.manifest = defaultMan || workMan || buildManifestFromState();
-    }else{
+    } else {
       state.manifest = used.manifest;
       // Re-apply labels from the chosen manifest now that frags exist.
       relabelFromManifest(state.manifest);
@@ -1625,120 +1780,140 @@ async function loadAll(){
     validateManifestMatchesLoaded(state.manifest, state.manifestPath);
 
     // drop files with no fragments
-    for(const [p,r] of [...state.files]) if(!r.fragments.length) state.files.delete(p);
+    for (const [p, r] of [...state.files]) if (!r.fragments.length) state.files.delete(p);
 
     renderTree();
-    const n=state.frags.size;
-    const warnCount=validationCount();
-    setStatus(`${n} fragment${n===1?'':'s'} loaded${warnCount?` · ${warnCount} warning${warnCount===1?'':'s'}`:''}`,false);
-    el('sbCount').textContent=`${n} fragment${n===1?'':'s'}${warnCount?` · ${warnCount} warning${warnCount===1?'':'s'}`:''}`;
-    if(warnCount) toast(`${warnCount} validation warning${warnCount===1?'':'s'} — open Diagnostics`,'err');
+    const n = state.frags.size;
+    const warnCount = validationCount();
+    setStatus(
+      `${n} fragment${n === 1 ? '' : 's'} loaded${warnCount ? ` · ${warnCount} warning${warnCount === 1 ? '' : 's'}` : ''}`,
+      false
+    );
+    el('sbCount').textContent =
+      `${n} fragment${n === 1 ? '' : 's'}${warnCount ? ` · ${warnCount} warning${warnCount === 1 ? '' : 's'}` : ''}`;
+    if (warnCount)
+      toast(
+        `${warnCount} validation warning${warnCount === 1 ? '' : 's'} — open Diagnostics`,
+        'err'
+      );
     showEmpty();
-  }catch(e){
-    setStatus('Load failed',false);
-    toast(GitHubErrors.githubErrorMessage(e,{action:'Load'}),'err');
+  } catch (e) {
+    setStatus('Load failed', false);
+    toast(GitHubErrors.githubErrorMessage(e, { action: 'Load' }), 'err');
     console.error(e);
   }
 }
 
 /* Load files referenced by a manifest; returns {count}. Does NOT clear state. */
-async function tryLoadFromManifest(manifest){
-  state.manifest=manifest; // so parseFileFragments can read labels
-  const paths=[...new Set(manifest.map(e=>e.file))];
-  const recs=await Promise.all(paths.map(p=>fetchFile(p).catch(e=>{
-    console.warn('fetch skip',p,e); return null;
-  })));
-  for(const r of recs){
-    if(!r) continue;
-    state.files.set(r.path,r);
+async function tryLoadFromManifest(manifest) {
+  state.manifest = manifest; // so parseFileFragments can read labels
+  const paths = [...new Set(manifest.map((e) => e.file))];
+  const recs = await Promise.all(
+    paths.map((p) =>
+      fetchFile(p).catch((e) => {
+        console.warn('fetch skip', p, e);
+        return null;
+      })
+    )
+  );
+  for (const r of recs) {
+    if (!r) continue;
+    state.files.set(r.path, r);
     parseFileFragments(r);
   }
   // Only count fragments whose id appears in this manifest — guards against a
   // stale manifest that points at the right files but wrong ids.
-  const manIds=new Set(manifest.map(e=>e.id));
-  let count=0;
-  for(const f of state.frags.values()) if(manIds.has(f.id)) count++;
-  return {count};
+  const manIds = new Set(manifest.map((e) => e.id));
+  let count = 0;
+  for (const f of state.frags.values()) if (manIds.has(f.id)) count++;
+  return { count };
 }
 
-async function tryTreeScan(){
-  state.manifest=null;
+async function tryTreeScan() {
+  state.manifest = null;
 
-  const snapshot=await GitHubApi.getBranchTreeSnapshot(state.workBranch);
-  const paths=(snapshot.tree||[])
-    .filter(n=>n.type==='blob'&&/\.html?$/i.test(n.path))
-    .map(n=>n.path);
+  const snapshot = await GitHubApi.getBranchTreeSnapshot(state.workBranch);
+  const paths = (snapshot.tree || [])
+    .filter((n) => n.type === 'blob' && /\.html?$/i.test(n.path))
+    .map((n) => n.path);
 
-  const recs=await Promise.all(paths.map(p=>fetchFile(p).catch(e=>{
-    console.warn('scan skip',p,e); return null;
-  })));
-  for(const r of recs){
-    if(!r) continue;
-    state.files.set(r.path,r);
+  const recs = await Promise.all(
+    paths.map((p) =>
+      fetchFile(p).catch((e) => {
+        console.warn('scan skip', p, e);
+        return null;
+      })
+    )
+  );
+  for (const r of recs) {
+    if (!r) continue;
+    state.files.set(r.path, r);
     parseFileFragments(r);
   }
 }
 
-function relabelFromManifest(manifest){
-  if(!manifest) return;
-  for(const e of manifest){
-    const f=state.frags.get(e.id);
-    if(f) f.label=e.label;
+function relabelFromManifest(manifest) {
+  if (!manifest) return;
+  for (const e of manifest) {
+    const f = state.frags.get(e.id);
+    if (f) f.label = e.label;
   }
 }
-function buildManifestFromState(){
-  return [...state.frags.values()].map(f=>({id:f.id,file:f.path,label:f.label}));
+function buildManifestFromState() {
+  return [...state.frags.values()].map((f) => ({ id: f.id, file: f.path, label: f.label }));
 }
 
 /* ---------- status rendering ---------- */
 
-function setStatus(txt,busy){
-  el('statusTxt').textContent=txt;
-  el('refreshBtn').querySelector('svg').classList.toggle('spin',!!busy);
+function setStatus(txt, busy) {
+  el('statusTxt').textContent = txt;
+  el('refreshBtn').querySelector('svg').classList.toggle('spin', !!busy);
 }
 
-function updateUnsavedBar(){
-  const anyDirty=[...state.frags.values()].some(f=>f.dirty);
-  el('sbUnsaved').classList.toggle('show',anyDirty);
+function updateUnsavedBar() {
+  const anyDirty = [...state.frags.values()].some((f) => f.dirty);
+  el('sbUnsaved').classList.toggle('show', anyDirty);
 }
 
 /* ---------- tree rendering ---------- */
 
-function renderTree(){
-  const tree=el('tree'); tree.innerHTML='';
-  const byFile=new Map();
-  for(const f of state.frags.values()){
-    if(!byFile.has(f.path)) byFile.set(f.path,[]);
+function renderTree() {
+  const tree = el('tree');
+  tree.innerHTML = '';
+  const byFile = new Map();
+  for (const f of state.frags.values()) {
+    if (!byFile.has(f.path)) byFile.set(f.path, []);
     byFile.get(f.path).push(f);
   }
-  for(const [path,frags] of byFile){
-    const group=document.createElement('div');
-    group.className='file-group';
-    group.dataset.path=path;
-    const anyDirty=frags.some(f=>f.dirty);
-    if(anyDirty) group.classList.add('has-dirty');
+  for (const [path, frags] of byFile) {
+    const group = document.createElement('div');
+    group.className = 'file-group';
+    group.dataset.path = path;
+    const anyDirty = frags.some((f) => f.dirty);
+    if (anyDirty) group.classList.add('has-dirty');
 
-    const row=document.createElement('div');
-    row.className='file-row';
-    row.innerHTML=`
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `
       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
       <span>${esc(path)}</span>
       <span class="count">${frags.length}</span>
       <span class="fdot"></span>`;
-    row.onclick=()=>group.classList.toggle('collapsed');
+    row.onclick = () => group.classList.toggle('collapsed');
     group.appendChild(row);
 
-    const list=document.createElement('div');
-    list.className='frag-list';
-    for(const f of frags){
-      const fr=document.createElement('div');
-      fr.className='frag-row'+(f.dirty?' dirty':'')+(f.id===state.activeId?' active':'');
-      fr.dataset.id=f.id;
-      fr.innerHTML=`
+    const list = document.createElement('div');
+    list.className = 'frag-list';
+    for (const f of frags) {
+      const fr = document.createElement('div');
+      fr.className =
+        'frag-row' + (f.dirty ? ' dirty' : '') + (f.id === state.activeId ? ' active' : '');
+      fr.dataset.id = f.id;
+      fr.innerHTML = `
         <span class="ddot"></span>
         <span class="flabel">${esc(f.label)}</span>
         <span class="fid">#${esc(f.id)}</span>`;
-      fr.onclick=()=>selectFragment(f.id);
+      fr.onclick = () => selectFragment(f.id);
       list.appendChild(fr);
     }
     group.appendChild(list);
@@ -1746,75 +1921,81 @@ function renderTree(){
   }
 }
 
-function showEmpty(){
-  el('emptyState').style.display='flex';
-  el('editorPane').style.display='none';
-  el('sbPath').textContent='';
+function showEmpty() {
+  el('emptyState').style.display = 'flex';
+  el('editorPane').style.display = 'none';
+  el('sbPath').textContent = '';
 }
 
 /* ---------- editor rendering ---------- */
 
-function selectFragment(id){
-  if(state.activeId && state.activeId!==id) syncActiveFromTextarea();
+function selectFragment(id) {
+  if (state.activeId && state.activeId !== id) syncActiveFromTextarea();
   Store.setActiveFragment(id);
-  const f=state.frags.get(id);
-  el('emptyState').style.display='none';
-  el('editorPane').style.display='flex';
-  el('edId').textContent='#'+f.id;
-  el('edFile').textContent=f.path;
-  el('edLabel').value=f.label;
-  el('htmlArea').value=f.innerHTML;
-  el('wrapInfo').textContent=f.mode==='marker' ? `<!-- cms:start ${f.markerId||f.id} --> ${f.openTag} … ${f.closeTag||'</section>'} <!-- cms:end ${f.markerId||f.id} -->` : `${f.openTag} … ${f.closeTag||'</section>'}`;
-  el('sbPath').textContent=f.path;
+  const f = state.frags.get(id);
+  el('emptyState').style.display = 'none';
+  el('editorPane').style.display = 'flex';
+  el('edId').textContent = '#' + f.id;
+  el('edFile').textContent = f.path;
+  el('edLabel').value = f.label;
+  el('htmlArea').value = f.innerHTML;
+  el('wrapInfo').textContent =
+    f.mode === 'marker'
+      ? `<!-- cms:start ${f.markerId || f.id} --> ${f.openTag} … ${f.closeTag || '</section>'} <!-- cms:end ${f.markerId || f.id} -->`
+      : `${f.openTag} … ${f.closeTag || '</section>'}`;
+  el('sbPath').textContent = f.path;
   updatePreview(f);
   updateUnsavedBar();
   // active highlight
-  document.querySelectorAll('.frag-row').forEach(r=>r.classList.toggle('active',r.dataset.id===id));
+  document
+    .querySelectorAll('.frag-row')
+    .forEach((r) => r.classList.toggle('active', r.dataset.id === id));
 }
 
-function syncActiveFromTextarea(){
-  const f=state.frags.get(state.activeId); if(!f) return;
-  f.innerHTML=el('htmlArea').value;
-  f.dirty=(f.innerHTML!==f.origHTML)||(labelChanged(f));
+function syncActiveFromTextarea() {
+  const f = state.frags.get(state.activeId);
+  if (!f) return;
+  f.innerHTML = el('htmlArea').value;
+  f.dirty = f.innerHTML !== f.origHTML || labelChanged(f);
 }
-function labelChanged(f){
-  const m=state.manifest&&state.manifest.find(e=>e.id===f.id);
-  const orig=m?m.label:f.id;
-  return f.label!==orig;
+function labelChanged(f) {
+  const m = state.manifest && state.manifest.find((e) => e.id === f.id);
+  const orig = m ? m.label : f.id;
+  return f.label !== orig;
 }
 
 /* ---------- preview rendering ---------- */
 
-let previewBlobUrl=null;
+let previewBlobUrl = null;
 
-function previewPathContext(){
+function previewPathContext() {
   return {
-    owner:state.owner,
-    repo:state.repo,
-    ref:contentAssetRef(),
-    mediaPrefix:mediaPrefix(),
-    mediaDir:mediaDir(),
-    version:Date.now()
+    owner: state.owner,
+    repo: state.repo,
+    ref: contentAssetRef(),
+    mediaPrefix: mediaPrefix(),
+    mediaDir: mediaDir(),
+    version: Date.now()
   };
 }
 
-function rewritePreviewUrls(html){
-  return PreviewPaths.rewriteFragmentMediaUrls(html,previewPathContext());
+function rewritePreviewUrls(html) {
+  return PreviewPaths.rewriteFragmentMediaUrls(html, previewPathContext());
 }
 
-function rewriteFullPageAssetUrls(pageHtml,filePath){
-  return PreviewPaths.rewriteFullPageAssetUrls(pageHtml,filePath,previewPathContext());
+function rewriteFullPageAssetUrls(pageHtml, filePath) {
+  return PreviewPaths.rewriteFullPageAssetUrls(pageHtml, filePath, previewPathContext());
 }
 
-function updatePreviewModeButtons(){
-  const fragBtn=el('previewFragmentBtn');
-  const pageBtn=el('previewPageBtn');
-  if(!fragBtn || !pageBtn) return;
-  fragBtn.classList.toggle('active',state.previewMode==='fragment');
-  pageBtn.classList.toggle('active',state.previewMode==='page');
+function updatePreviewModeButtons() {
+  const fragBtn = el('previewFragmentBtn');
+  const pageBtn = el('previewPageBtn');
+  if (!fragBtn || !pageBtn) return;
+  fragBtn.classList.toggle('active', state.previewMode === 'fragment');
+  pageBtn.classList.toggle('active', state.previewMode === 'page');
 }
 
-function previewShell(body,{title='GitCMS Preview',extraHead=''}={}){
+function previewShell(body, { title = 'GitCMS Preview', extraHead = '' } = {}) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
     ${extraHead}
     <style>
@@ -1829,216 +2010,234 @@ function previewShell(body,{title='GitCMS Preview',extraHead=''}={}){
     <title>${esc(title)}</title></head><body>${body}</body></html>`;
 }
 
-function previewErrorDoc(title,message,details=''){
+function previewErrorDoc(title, message, details = '') {
   return previewShell(
-    `<div class="gitcms-preview-error"><h2>${esc(title)}</h2><p>${esc(message)}</p>${details?`<pre>${esc(details)}</pre>`:''}</div>`,
-    {title}
+    `<div class="gitcms-preview-error"><h2>${esc(title)}</h2><p>${esc(message)}</p>${details ? `<pre>${esc(details)}</pre>` : ''}</div>`,
+    { title }
   );
 }
 
-function buildFragmentPreview(f){
-  try{
-    if(!f) return previewErrorDoc('No fragment selected','Select a fragment to preview it.');
-    return previewShell(rewritePreviewUrls(rebuildFragment(f)),{
-      title:`Preview ${f.id}`,
-      extraHead:previewCssTags()
+function buildFragmentPreview(f) {
+  try {
+    if (!f) return previewErrorDoc('No fragment selected', 'Select a fragment to preview it.');
+    return previewShell(rewritePreviewUrls(rebuildFragment(f)), {
+      title: `Preview ${f.id}`,
+      extraHead: previewCssTags()
     });
-  }catch(e){
-    console.error('Fragment preview failed',e);
-    return previewErrorDoc('Fragment preview failed',e.message||String(e));
+  } catch (e) {
+    console.error('Fragment preview failed', e);
+    return previewErrorDoc('Fragment preview failed', e.message || String(e));
   }
 }
 
-function buildPagePreview(f){
-  try{
-    if(!f) return previewErrorDoc('No fragment selected','Select a fragment to preview it.');
-    const fileRec=state.files.get(f.path);
-    if(!fileRec) return buildFragmentPreview(f);
+function buildPagePreview(f) {
+  try {
+    if (!f) return previewErrorDoc('No fragment selected', 'Select a fragment to preview it.');
+    const fileRec = state.files.get(f.path);
+    if (!fileRec) return buildFragmentPreview(f);
 
-    let page=fileRec.content;
-    try{
-      page=replaceFragment(page,f);
-    }catch(e){
-      return previewErrorDoc('Page preview failed',e.message||String(e),'Falling back to Fragment mode usually still works.');
+    let page = fileRec.content;
+    try {
+      page = replaceFragment(page, f);
+    } catch (e) {
+      return previewErrorDoc(
+        'Page preview failed',
+        e.message || String(e),
+        'Falling back to Fragment mode usually still works.'
+      );
     }
 
-    page=rewriteFullPageAssetUrls(page,f.path);
+    page = rewriteFullPageAssetUrls(page, f.path);
 
     // Keep scripts inert even if the iframe sandbox changes later.
-    page=page.replace(/<script\b/gi,'<script type="text/plain" data-gitcms-disabled');
+    page = page.replace(/<script\b/gi, '<script type="text/plain" data-gitcms-disabled');
 
     // Add a small safety style and selected-fragment outline without depending on site CSS.
-    page=page.replace('</head>', `<style>
+    page = page.replace(
+      '</head>',
+      `<style>
       img{max-width:100%;height:auto}
       [data-fragment="${escAttr(f.id)}"], #${escAttr(f.id)}{outline:2px dashed rgba(37,99,235,.55);outline-offset:6px}
-    </style></head>`);
+    </style></head>`
+    );
 
     return page;
-  }catch(e){
-    console.error('Page preview failed',e);
-    return previewErrorDoc('Page preview failed',e.message||String(e));
+  } catch (e) {
+    console.error('Page preview failed', e);
+    return previewErrorDoc('Page preview failed', e.message || String(e));
   }
 }
 
-function setPreviewDocument(html){
-  const frame=el('preview');
-  if(!frame) return;
+function setPreviewDocument(html) {
+  const frame = el('preview');
+  if (!frame) return;
 
-  try{
-    if(previewBlobUrl){
+  try {
+    if (previewBlobUrl) {
       URL.revokeObjectURL(previewBlobUrl);
-      previewBlobUrl=null;
+      previewBlobUrl = null;
     }
 
-    const blob=new Blob([html],{type:'text/html'});
-    previewBlobUrl=URL.createObjectURL(blob);
+    const blob = new Blob([html], { type: 'text/html' });
+    previewBlobUrl = URL.createObjectURL(blob);
 
     // Clear srcdoc so browser does not prefer stale srcdoc over blob URL.
     frame.removeAttribute('srcdoc');
-    frame.src=previewBlobUrl;
-  }catch(e){
-    console.error('Blob preview failed, falling back to srcdoc',e);
+    frame.src = previewBlobUrl;
+  } catch (e) {
+    console.error('Blob preview failed, falling back to srcdoc', e);
     frame.removeAttribute('src');
-    frame.srcdoc=html;
+    frame.srcdoc = html;
   }
 }
 
-function updatePreview(f){
+function updatePreview(f) {
   updatePreviewModeButtons();
 
-  try{
+  try {
     // Keep the active fragment synced before building preview.
-    if(f && state.activeId===f.id && el('htmlArea')){
-      f.innerHTML=el('htmlArea').value;
-      f.label=(el('edLabel').value.trim()||f.id);
+    if (f && state.activeId === f.id && el('htmlArea')) {
+      f.innerHTML = el('htmlArea').value;
+      f.label = el('edLabel').value.trim() || f.id;
     }
 
-    const html = state.previewMode==='page' ? buildPagePreview(f) : buildFragmentPreview(f);
+    const html = state.previewMode === 'page' ? buildPagePreview(f) : buildFragmentPreview(f);
     setPreviewDocument(html);
-  }catch(e){
-    console.error('Preview update failed',e);
-    setPreviewDocument(previewErrorDoc('Preview update failed',e.message||String(e)));
+  } catch (e) {
+    console.error('Preview update failed', e);
+    setPreviewDocument(previewErrorDoc('Preview update failed', e.message || String(e)));
   }
 }
 
 /* ---------- preview/media path helpers ---------- */
 const PreviewPaths = (() => {
-  function normalizeRepoPath(path){
-    return (path||'').trim().replace(/^\/+|\/+$/g,'').replace(/\/+/g,'/');
+  function normalizeRepoPath(path) {
+    return (path || '')
+      .trim()
+      .replace(/^\/+|\/+$/g, '')
+      .replace(/\/+/g, '/');
   }
 
-  function normalizePathParts(path){
-    const parts=[];
-    for(const part of String(path||'').split('/')){
-      if(!part || part==='.') continue;
-      if(part==='..') parts.pop();
+  function normalizePathParts(path) {
+    const parts = [];
+    for (const part of String(path || '').split('/')) {
+      if (!part || part === '.') continue;
+      if (part === '..') parts.pop();
       else parts.push(part);
     }
     return parts.join('/');
   }
 
-  function isExternalOrSpecialUrl(url){
-    return /^(https?:|data:|blob:|mailto:|tel:|javascript:|#)/i.test(String(url||'').trim());
+  function isExternalOrSpecialUrl(url) {
+    return /^(https?:|data:|blob:|mailto:|tel:|javascript:|#)/i.test(String(url || '').trim());
   }
 
-  function escapeAttrLocal(s){
-    return String(s||'')
-      .replace(/&/g,'&amp;')
-      .replace(/"/g,'&quot;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;');
+  function escapeAttrLocal(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
-  function escapeRegExp(s){
-    return String(s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  function escapeRegExp(s) {
+    return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  function splitPathSuffix(url){
-    const raw=String(url||'').trim();
-    const match=raw.match(/^([^?#]*)([?#].*)?$/);
+  function splitPathSuffix(url) {
+    const raw = String(url || '').trim();
+    const match = raw.match(/^([^?#]*)([?#].*)?$/);
     return {
-      path:match ? match[1] : raw,
-      suffix:match && match[2] ? match[2] : ''
+      path: match ? match[1] : raw,
+      suffix: match && match[2] ? match[2] : ''
     };
   }
 
-  function encodeRepoPath(repoPath){
+  function encodeRepoPath(repoPath) {
     return normalizeRepoPath(repoPath).split('/').map(encodeURIComponent).join('/');
   }
 
-  function rawGitHubUrl({owner,repo,ref,repoPath}){
+  function rawGitHubUrl({ owner, repo, ref, repoPath }) {
     return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(ref)}/${encodeRepoPath(repoPath)}`;
   }
 
-  function addCacheBust(url,version){
-    if(version===undefined || version===null || version==='') return url;
+  function addCacheBust(url, version) {
+    if (version === undefined || version === null || version === '') return url;
     return url + (url.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(version);
   }
 
-  function resolveRepoRelativeUrl(url,filePath){
-    const raw=String(url||'').trim();
-    if(!raw || isExternalOrSpecialUrl(raw)) return null;
+  function resolveRepoRelativeUrl(url, filePath) {
+    const raw = String(url || '').trim();
+    if (!raw || isExternalOrSpecialUrl(raw)) return null;
 
-    const {path,suffix}=splitPathSuffix(raw);
-    if(!path) return null;
+    const { path, suffix } = splitPathSuffix(raw);
+    if (!path) return null;
 
-    if(path.startsWith('/')){
-      return normalizePathParts('docs/' + path.replace(/^\/+/,'')) + suffix;
+    if (path.startsWith('/')) {
+      return normalizePathParts('docs/' + path.replace(/^\/+/, '')) + suffix;
     }
 
-    const dir=normalizeRepoPath(filePath).split('/').slice(0,-1).join('/');
+    const dir = normalizeRepoPath(filePath).split('/').slice(0, -1).join('/');
     return normalizePathParts((dir ? dir + '/' : '') + path) + suffix;
   }
 
-  function rawUrlForPreviewAsset(url,filePath,ctx){
-    const repoPath=resolveRepoRelativeUrl(url,filePath);
-    if(!repoPath) return url;
+  function rawUrlForPreviewAsset(url, filePath, ctx) {
+    const repoPath = resolveRepoRelativeUrl(url, filePath);
+    if (!repoPath) return url;
 
-    const {path,suffix}=splitPathSuffix(repoPath);
-    const raw=rawGitHubUrl({
-      owner:ctx.owner,
-      repo:ctx.repo,
-      ref:ctx.ref,
-      repoPath:path
-    }) + suffix;
+    const { path, suffix } = splitPathSuffix(repoPath);
+    const raw =
+      rawGitHubUrl({
+        owner: ctx.owner,
+        repo: ctx.repo,
+        ref: ctx.ref,
+        repoPath: path
+      }) + suffix;
 
-    return addCacheBust(raw,ctx.version);
+    return addCacheBust(raw, ctx.version);
   }
 
-  function rewriteFullPageAssetUrls(pageHtml,filePath,ctx){
-    return String(pageHtml||'')
-      .replace(/\s(href)=["']([^"']+)["']/gi,(m,attr,url)=>{
-        if(isExternalOrSpecialUrl(url)) return m;
-        if(!/\.(css|ico|png|jpe?g|gif|webp|svg|avif)([?#].*)?$/i.test(url)) return m;
-        return ` ${attr}="${escapeAttrLocal(rawUrlForPreviewAsset(url,filePath,ctx))}"`;
+  function rewriteFullPageAssetUrls(pageHtml, filePath, ctx) {
+    return String(pageHtml || '')
+      .replace(/\s(href)=["']([^"']+)["']/gi, (m, attr, url) => {
+        if (isExternalOrSpecialUrl(url)) return m;
+        if (!/\.(css|ico|png|jpe?g|gif|webp|svg|avif)([?#].*)?$/i.test(url)) return m;
+        return ` ${attr}="${escapeAttrLocal(rawUrlForPreviewAsset(url, filePath, ctx))}"`;
       })
-      .replace(/\s(src|poster)=["']([^"']+)["']/gi,(m,attr,url)=>{
-        if(isExternalOrSpecialUrl(url)) return m;
-        return ` ${attr}="${escapeAttrLocal(rawUrlForPreviewAsset(url,filePath,ctx))}"`;
+      .replace(/\s(src|poster)=["']([^"']+)["']/gi, (m, attr, url) => {
+        if (isExternalOrSpecialUrl(url)) return m;
+        return ` ${attr}="${escapeAttrLocal(rawUrlForPreviewAsset(url, filePath, ctx))}"`;
       })
-      .replace(/\s(srcset)=["']([^"']+)["']/gi,(m,attr,value)=>{
-        const rewritten=value.split(',').map(part=>{
-          const bits=part.trim().split(/\s+/);
-          if(!bits[0]) return part;
-          bits[0]=rawUrlForPreviewAsset(bits[0],filePath,ctx);
-          return bits.join(' ');
-        }).join(', ');
+      .replace(/\s(srcset)=["']([^"']+)["']/gi, (m, attr, value) => {
+        const rewritten = value
+          .split(',')
+          .map((part) => {
+            const bits = part.trim().split(/\s+/);
+            if (!bits[0]) return part;
+            bits[0] = rawUrlForPreviewAsset(bits[0], filePath, ctx);
+            return bits.join(' ');
+          })
+          .join(', ');
         return ` ${attr}="${escapeAttrLocal(rewritten)}"`;
       });
   }
 
-  function rewriteFragmentMediaUrls(fragmentHtml,ctx){
-    if(!ctx.owner || !ctx.repo || !ctx.ref) return fragmentHtml;
-    const prefix=String(ctx.mediaPrefix||'');
-    const dir=normalizeRepoPath(ctx.mediaDir||'');
-    if(!prefix || !dir || prefix.includes('{path}') || prefix.includes('{file}')) return fragmentHtml;
+  function rewriteFragmentMediaUrls(fragmentHtml, ctx) {
+    if (!ctx.owner || !ctx.repo || !ctx.ref) return fragmentHtml;
+    const prefix = String(ctx.mediaPrefix || '');
+    const dir = normalizeRepoPath(ctx.mediaDir || '');
+    if (!prefix || !dir || prefix.includes('{path}') || prefix.includes('{file}'))
+      return fragmentHtml;
 
-    const rawBase=`https://raw.githubusercontent.com/${encodeURIComponent(ctx.owner)}/${encodeURIComponent(ctx.repo)}/${encodeURIComponent(ctx.ref)}/${encodeRepoPath(dir)}/`;
-    const version=ctx.version;
+    const rawBase = `https://raw.githubusercontent.com/${encodeURIComponent(ctx.owner)}/${encodeURIComponent(ctx.repo)}/${encodeURIComponent(ctx.ref)}/${encodeRepoPath(dir)}/`;
+    const version = ctx.version;
 
-    return String(fragmentHtml||'').replace(new RegExp(`(src=["'])${escapeRegExp(prefix)}([^"']+)(["'])`,'gi'),(m,start,rest,end)=>{
-      return `${start}${addCacheBust(rawBase + rest,version)}${end}`;
-    });
+    return String(fragmentHtml || '').replace(
+      new RegExp(`(src=["'])${escapeRegExp(prefix)}([^"']+)(["'])`, 'gi'),
+      (m, start, rest, end) => {
+        return `${start}${addCacheBust(rawBase + rest, version)}${end}`;
+      }
+    );
   }
 
   return Object.freeze({
@@ -2055,183 +2254,207 @@ const PreviewPaths = (() => {
 })();
 
 /* ---------- HTML snippets ---------- */
-function editorSnippetConfig(){
+function editorSnippetConfig() {
   return typeof gitcmsConfig !== 'undefined' ? gitcmsConfig : null;
 }
 
-function editorSnippetDefinitions(){
+function editorSnippetDefinitions() {
   return EditorUtils.editorSnippetDefinitions(editorSnippetConfig());
 }
 
-function selectedEditorText(){
-  const ta=el('htmlArea');
-  const start=ta.selectionStart ?? 0;
-  const end=ta.selectionEnd ?? 0;
-  return EditorUtils.selectedText(ta.value,start,end);
+function selectedEditorText() {
+  const ta = el('htmlArea');
+  const start = ta.selectionStart ?? 0;
+  const end = ta.selectionEnd ?? 0;
+  return EditorUtils.selectedText(ta.value, start, end);
 }
 
-function snippetTemplate(type,selection=''){
-  return EditorUtils.snippetTemplate(type,selection,editorSnippetConfig());
+function snippetTemplate(type, selection = '') {
+  return EditorUtils.snippetTemplate(type, selection, editorSnippetConfig());
 }
 
-function renderEditorSnippetControls(){
-  const quick=el('quickSnippetButtons');
-  const grid=el('editorSnippetGrid');
-  if(!quick || !grid) return;
+function renderEditorSnippetControls() {
+  const quick = el('quickSnippetButtons');
+  const grid = el('editorSnippetGrid');
+  if (!quick || !grid) return;
 
-  const snippets=editorSnippetDefinitions();
-  const quickSnippets=snippets.filter(s=>s.quick);
+  const snippets = editorSnippetDefinitions();
+  const quickSnippets = snippets.filter((s) => s.quick);
 
-  quick.innerHTML=quickSnippets.map(snippet=>
-    `<button class="snippet-btn" type="button" data-snippet="${escAttr(snippet.id)}">${esc(snippet.label)}</button>`
-  ).join('');
+  quick.innerHTML = quickSnippets
+    .map(
+      (snippet) =>
+        `<button class="snippet-btn" type="button" data-snippet="${escAttr(snippet.id)}">${esc(snippet.label)}</button>`
+    )
+    .join('');
 
-  grid.innerHTML=snippets.map(snippet=>{
-    const hint=snippet.hint || snippet.id;
-    return `<button type="button" data-snippet="${escAttr(snippet.id)}">`+
-      `<b>${esc(snippet.label)}</b><span>${esc(hint)}</span></button>`;
-  }).join('');
+  grid.innerHTML = snippets
+    .map((snippet) => {
+      const hint = snippet.hint || snippet.id;
+      return (
+        `<button type="button" data-snippet="${escAttr(snippet.id)}">` +
+        `<b>${esc(snippet.label)}</b><span>${esc(hint)}</span></button>`
+      );
+    })
+    .join('');
 }
 
-function insertHtmlSnippet(type){
-  const ta=el('htmlArea');
-  if(!state.activeId || !ta) {
-    toast('Select a fragment first','err');
+function insertHtmlSnippet(type) {
+  const ta = el('htmlArea');
+  if (!state.activeId || !ta) {
+    toast('Select a fragment first', 'err');
     return;
   }
-  const snippet=snippetTemplate(type,selectedEditorText());
-  if(!snippet) {
-    toast('Snippet not found','err');
+  const snippet = snippetTemplate(type, selectedEditorText());
+  if (!snippet) {
+    toast('Snippet not found', 'err');
     return;
   }
-  insertAtCursor(ta,snippet);
-  toast('Snippet inserted','ok');
+  insertAtCursor(ta, snippet);
+  toast('Snippet inserted', 'ok');
 }
 
 /* ---------- editing events ---------- */
 
-el('previewFragmentBtn').onclick=()=>{
-  state.previewMode='fragment';
-  const f=state.frags.get(state.activeId);
-  if(f) updatePreview(f);
+el('previewFragmentBtn').onclick = () => {
+  state.previewMode = 'fragment';
+  const f = state.frags.get(state.activeId);
+  if (f) updatePreview(f);
 };
-el('previewPageBtn').onclick=()=>{
-  state.previewMode='page';
-  const f=state.frags.get(state.activeId);
-  if(f) updatePreview(f);
+el('previewPageBtn').onclick = () => {
+  state.previewMode = 'page';
+  const f = state.frags.get(state.activeId);
+  if (f) updatePreview(f);
 };
 
-
-el('editorPane').addEventListener('click',event=>{
-  const snippetBtn=event.target.closest('[data-snippet]');
-  if(snippetBtn && el('editorPane').contains(snippetBtn)){
+el('editorPane').addEventListener('click', (event) => {
+  const snippetBtn = event.target.closest('[data-snippet]');
+  if (snippetBtn && el('editorPane').contains(snippetBtn)) {
     insertHtmlSnippet(snippetBtn.dataset.snippet);
     return;
   }
 
-  if(event.target.closest('#editorHelpToggle')){
-    const panel=el('editorHelp');
-    panel.open=!panel.open;
+  if (event.target.closest('#editorHelpToggle')) {
+    const panel = el('editorHelp');
+    panel.open = !panel.open;
   }
 });
 
-el('htmlArea').addEventListener('input',()=>{
-  const f=state.frags.get(state.activeId); if(!f) return;
-  Store.applyEditorValues(f.id,{html:el('htmlArea').value,label:el('edLabel').value});
+el('htmlArea').addEventListener('input', () => {
+  const f = state.frags.get(state.activeId);
+  if (!f) return;
+  Store.applyEditorValues(f.id, { html: el('htmlArea').value, label: el('edLabel').value });
   updatePreview(f);
   reflectDirty(f);
 });
-el('edLabel').addEventListener('input',()=>{
-  const f=state.frags.get(state.activeId); if(!f) return;
-  Store.applyEditorValues(f.id,{html:el('htmlArea').value,label:el('edLabel').value});
-  const row=document.querySelector(`.frag-row[data-id="${cssEsc(f.id)}"] .flabel`);
-  if(row) row.textContent=f.label;
+el('edLabel').addEventListener('input', () => {
+  const f = state.frags.get(state.activeId);
+  if (!f) return;
+  Store.applyEditorValues(f.id, { html: el('htmlArea').value, label: el('edLabel').value });
+  const row = document.querySelector(`.frag-row[data-id="${cssEsc(f.id)}"] .flabel`);
+  if (row) row.textContent = f.label;
   reflectDirty(f);
 });
-function cssEsc(s){return (window.CSS&&CSS.escape)?CSS.escape(s):s.replace(/"/g,'\\"');}
-function reflectDirty(f){
-  const row=document.querySelector(`.frag-row[data-id="${cssEsc(f.id)}"]`);
-  if(row) row.classList.toggle('dirty',f.dirty);
-  const group=document.querySelector(`.file-group[data-path="${cssEsc(f.path)}"]`);
-  if(group){
-    const anyDirty=Store.dirtyFragmentIdsForFile(state.files.get(f.path)).length>0;
-    group.classList.toggle('has-dirty',anyDirty);
+function cssEsc(s) {
+  return window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/"/g, '\\"');
+}
+function reflectDirty(f) {
+  const row = document.querySelector(`.frag-row[data-id="${cssEsc(f.id)}"]`);
+  if (row) row.classList.toggle('dirty', f.dirty);
+  const group = document.querySelector(`.file-group[data-path="${cssEsc(f.path)}"]`);
+  if (group) {
+    const anyDirty = Store.dirtyFragmentIdsForFile(state.files.get(f.path)).length > 0;
+    group.classList.toggle('has-dirty', anyDirty);
   }
   updateUnsavedBar();
 }
 
-el('resetBtn').onclick=()=>{
-  const f=state.frags.get(state.activeId); if(!f) return;
-  const reset=EditorUtils.resetFragmentValues(f,state.manifest);
-  Object.assign(f,reset);
-  el('htmlArea').value=f.innerHTML;
-  el('edLabel').value=f.label;
-  const row=document.querySelector(`.frag-row[data-id="${cssEsc(f.id)}"] .flabel`);
-  if(row) row.textContent=f.label;
-  updatePreview(f); reflectDirty(f);
+el('resetBtn').onclick = () => {
+  const f = state.frags.get(state.activeId);
+  if (!f) return;
+  const reset = EditorUtils.resetFragmentValues(f, state.manifest);
+  Object.assign(f, reset);
+  el('htmlArea').value = f.innerHTML;
+  el('edLabel').value = f.label;
+  const row = document.querySelector(`.frag-row[data-id="${cssEsc(f.id)}"] .flabel`);
+  if (row) row.textContent = f.label;
+  updatePreview(f);
+  reflectDirty(f);
   toast('Reset to last loaded version');
 };
 
 /* ---------- commit ---------- */
-el('saveBtn').onclick=()=>{
-  const f=state.frags.get(state.activeId); if(!f) return;
+el('saveBtn').onclick = () => {
+  const f = state.frags.get(state.activeId);
+  if (!f) return;
   syncActiveFromTextarea();
-  el('commitMsg').value=`cms: update fragment #${f.id}`;
+  el('commitMsg').value = `cms: update fragment #${f.id}`;
   el('commitErr').classList.remove('show');
   // count siblings in same file that are also dirty
-  const fileRec=state.files.get(f.path);
-  const dirtyInFile=Store.dirtyFragmentIdsForFile(fileRec);
-  el('commitDesc').innerHTML = dirtyInFile.length>1
-    ? `Saving <b>${dirtyInFile.length}</b> changed fragments in <span class="mono">${esc(f.path)}</span> to <b>${esc(state.workBranch)}</b> in one commit.`
-    : `Saving changes to <span class="mono">${esc(f.path)}</span> on the <b>${esc(state.workBranch)}</b> branch.`;
+  const fileRec = state.files.get(f.path);
+  const dirtyInFile = Store.dirtyFragmentIdsForFile(fileRec);
+  el('commitDesc').innerHTML =
+    dirtyInFile.length > 1
+      ? `Saving <b>${dirtyInFile.length}</b> changed fragments in <span class="mono">${esc(f.path)}</span> to <b>${esc(state.workBranch)}</b> in one commit.`
+      : `Saving changes to <span class="mono">${esc(f.path)}</span> on the <b>${esc(state.workBranch)}</b> branch.`;
   el('commitModal').classList.add('show');
   el('commitMsg').focus();
 };
-el('commitCancel').onclick=()=>el('commitModal').classList.remove('show');
-el('commitConfirm').onclick=doCommit;
+el('commitCancel').onclick = () => el('commitModal').classList.remove('show');
+el('commitConfirm').onclick = doCommit;
 
-async function doCommit(){
-  const f=state.frags.get(state.activeId); if(!f) return;
-  const msg=el('commitMsg').value.trim()||`cms: update fragment #${f.id}`;
-  const btn=el('commitConfirm'); btn.disabled=true; btn.textContent='Committing…';
+async function doCommit() {
+  const f = state.frags.get(state.activeId);
+  if (!f) return;
+  const msg = el('commitMsg').value.trim() || `cms: update fragment #${f.id}`;
+  const btn = el('commitConfirm');
+  btn.disabled = true;
+  btn.textContent = 'Committing…';
   el('commitErr').classList.remove('show');
 
-  const fileRec=state.files.get(f.path);
-  try{
-    const dirtyIds=Store.dirtyFragmentIdsForFile(fileRec);
-    const htmlDirtyIds=dirtyIds.filter(id=>{
-      const frag=state.frags.get(id);
-      return frag && frag.innerHTML!==frag.origHTML;
+  const fileRec = state.files.get(f.path);
+  try {
+    const dirtyIds = Store.dirtyFragmentIdsForFile(fileRec);
+    const htmlDirtyIds = dirtyIds.filter((id) => {
+      const frag = state.frags.get(id);
+      return frag && frag.innerHTML !== frag.origHTML;
     });
 
     // Use the current content-branch file as the write base before saving.
     // This bypasses cached preview/content-tree reads and gets the SHA expected
     // by GitHub's Contents PUT endpoint. main is never used as a save source.
-    if(htmlDirtyIds.length){
-      let put=null;
-      for(let attempt=1; attempt<=2; attempt++){
-        try{
-          let content=fileRec.content;
-          let sha=null;
-          try{
-            const cur=await GitHubApi.getFileForWrite(f.path,state.workBranch);
-            content=dec(cur.content);
-            sha=cur.sha;
-          }catch(e){ if(e.status!==404) throw e; }
-
-          for(const id of htmlDirtyIds){
-            const frag=state.frags.get(id);
-            content=replaceFragment(content,frag);
+    if (htmlDirtyIds.length) {
+      let put = null;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          let content = fileRec.content;
+          let sha = null;
+          try {
+            const cur = await GitHubApi.getFileForWrite(f.path, state.workBranch);
+            content = dec(cur.content);
+            sha = cur.sha;
+          } catch (e) {
+            if (e.status !== 404) throw e;
           }
 
-          put=await GitHubApi.saveFile(f.path,{ message:msg, content:enc(content), branch:state.workBranch, sha });
-    Store.clearContentTree();
+          for (const id of htmlDirtyIds) {
+            const frag = state.frags.get(id);
+            content = replaceFragment(content, frag);
+          }
 
-          fileRec.content=content;
-          fileRec.shaDraft=put.content.sha;
+          put = await GitHubApi.saveFile(f.path, {
+            message: msg,
+            content: enc(content),
+            branch: state.workBranch,
+            sha
+          });
+          Store.clearContentTree();
+
+          fileRec.content = content;
+          fileRec.shaDraft = put.content.sha;
           break;
-        }catch(e){
-          if(e.status===409 && attempt<2){
+        } catch (e) {
+          if (e.status === 409 && attempt < 2) {
             await sleep(400);
             continue;
           }
@@ -2242,11 +2465,11 @@ async function doCommit(){
 
     // Manifest update (labels) — only needed when something in this file is dirty.
     // This also handles label-only saves without rewriting the HTML file.
-    if(state.manifest && dirtyIds.length){
+    if (state.manifest && dirtyIds.length) {
       await commitManifest(msg);
     }
 
-    for(const id of dirtyIds){
+    for (const id of dirtyIds) {
       Store.markFragmentClean(id);
     }
 
@@ -2254,70 +2477,84 @@ async function doCommit(){
     renderTree();
     selectFragment(f.id);
     updateUnsavedBar();
-    toast('Committed to '+state.workBranch,'ok');
-  }catch(e){
-    const err=el('commitErr');
+    toast('Committed to ' + state.workBranch, 'ok');
+  } catch (e) {
+    const err = el('commitErr');
     err.innerHTML = commitErrMsg(e);
     err.classList.add('show');
-  }finally{
-    btn.disabled=false; btn.textContent='Commit';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Commit';
   }
 }
 
-function commitErrMsg(e){
-  return esc(GitHubErrors.githubErrorMessage(e,{
-    action:'Commit',
-    conflict:`GitHub reported a write conflict. GitCMS retried once using the current ${state.workBranch} branch file via the Contents API, but it still failed. Refresh and try again.`
-  }));
+function commitErrMsg(e) {
+  return esc(
+    GitHubErrors.githubErrorMessage(e, {
+      action: 'Commit',
+      conflict: `GitHub reported a write conflict. GitCMS retried once using the current ${state.workBranch} branch file via the Contents API, but it still failed. Refresh and try again.`
+    })
+  );
 }
 
 /* Replace a single fragment in file content. Throw if it cannot be
    located, so the UI cannot report a successful commit when nothing changed. */
-function replaceFragment(content,frag){
+function replaceFragment(content, frag) {
   // Preferred replacement: marker boundary. This safely handles nested sections
   // because the editable range is defined by cms:start/cms:end comments.
-  if(frag.mode==='marker' || frag.markerId){
-    const parts=extractMarkedFragment(content,frag.markerId||frag.id) || extractMarkedFragment(content,frag.id);
-    if(!parts){
+  if (frag.mode === 'marker' || frag.markerId) {
+    const parts =
+      extractMarkedFragment(content, frag.markerId || frag.id) ||
+      extractMarkedFragment(content, frag.id);
+    if (!parts) {
       throw new Error(`Fragment markers not found in file: ${frag.id}`);
     }
-    return content.slice(0,parts.fullStart) +
-      rebuildMarkedFragmentFromParts(parts,frag.innerHTML) +
-      content.slice(parts.fullEnd);
+    return (
+      content.slice(0, parts.fullStart) +
+      rebuildMarkedFragmentFromParts(parts, frag.innerHTML) +
+      content.slice(parts.fullEnd)
+    );
   }
 
   // Backward-compatible fallback for old section-based fragments.
-  let matched=false;
-  const out=content.replace(SECTION_RE,(whole,openTag,attrs,inner)=>{
-    if(matched) return whole;
-    const id=fragmentIdFromAttrs(attrs);
-    if(id===frag.id && attrsDeclareFragment(attrs)){
-      matched=true;
+  let matched = false;
+  const out = content.replace(SECTION_RE, (whole, openTag, attrs, inner) => {
+    if (matched) return whole;
+    const id = fragmentIdFromAttrs(attrs);
+    if (id === frag.id && attrsDeclareFragment(attrs)) {
+      matched = true;
       return rebuildFragment(frag);
     }
     return whole;
   });
-  if(!matched){
+  if (!matched) {
     throw new Error(`Fragment not found in file: ${frag.id}`);
   }
   return out;
 }
 
-async function commitManifest(msg){
+async function commitManifest(msg) {
   // rebuild manifest labels from current fragment state
-  const updated=state.manifest.map(e=>{
-    const f=state.frags.get(e.id);
-    return f?{...e,label:f.label}:e;
+  const updated = state.manifest.map((e) => {
+    const f = state.frags.get(e.id);
+    return f ? { ...e, label: f.label } : e;
   });
   // include any fragments not yet in manifest? keep manifest as-is otherwise.
-  let sha=null;
-  try{
-    const cur=await GitHubApi.getFileForWrite(state.manifestPath,state.workBranch);
-    sha=cur.sha;
-  }catch(e){ if(e.status!==404) throw e; }
-  await GitHubApi.saveFile(state.manifestPath,{message:msg+' (manifest)',content:enc(JSON.stringify(updated,null,2)+'\n'),branch:state.workBranch,sha});
-    Store.clearContentTree();
-  state.manifest=updated;
+  let sha = null;
+  try {
+    const cur = await GitHubApi.getFileForWrite(state.manifestPath, state.workBranch);
+    sha = cur.sha;
+  } catch (e) {
+    if (e.status !== 404) throw e;
+  }
+  await GitHubApi.saveFile(state.manifestPath, {
+    message: msg + ' (manifest)',
+    content: enc(JSON.stringify(updated, null, 2) + '\n'),
+    branch: state.workBranch,
+    sha
+  });
+  Store.clearContentTree();
+  state.manifest = updated;
 }
 
 /* ---------- editor utility helpers ---------- */
@@ -2338,153 +2575,149 @@ const EditorUtils = (() => {
   }
 
   const DEFAULT_EDITOR_SNIPPETS = Object.freeze([
-  {
-    id: 'p',
-    label: 'Paragraph',
-    hint: '<p>',
-    quick: true,
-    html: '<p>{{text|New paragraph}}</p>'
-  },
-  {
-    id: 'h2',
-    label: 'Heading',
-    hint: '<h2>',
-    quick: true,
-    html: '<h2>{{text|New heading}}</h2>'
-  },
-  {
-    id: 'button',
-    label: 'Button link',
-    hint: '<a class="btn">',
-    quick: true,
-    html: '<a class="btn" href="contact.html">{{text|Call to action}}</a>'
-  },
-  {
-    id: 'image',
-    label: 'Image',
-    hint: '<img>',
-    quick: true,
-    html: '<img src="assets/media/image.jpg" alt="{{attr:text|Image description}}">'
-  },
-  {
-    id: 'lede',
-    label: 'Intro text',
-    hint: '<p class="lede">',
-    quick: false,
-    html: '<p class="lede">{{text|Intro text}}</p>'
-  },
-  {
-    id: 'list',
-    label: 'List',
-    hint: '<ul>',
-    quick: false,
-    html: '<ul>\n{{items|First item\nSecond item}}\n</ul>'
-  },
-  {
-    id: 'card',
-    label: 'Card',
-    hint: '<div class="card">',
-    quick: false,
-    html: '<div class="card">\n  <h3>{{text|Card title}}</h3>\n  <p>Card text.</p>\n</div>'
-  },
-  {
-    id: 'section',
-    label: 'Section wrapper',
-    hint: '<section>',
-    quick: false,
-    html: '<section class="section">\n  <div class="container">\n    <h2>{{text|Section heading}}</h2>\n    <p>Section text.</p>\n  </div>\n</section>'
-  },
-  {
-    id: 'columns',
-    label: 'Two columns',
-    hint: '<div class="columns">',
-    quick: false,
-    html: '<div class="columns">\n  <div>\n    <h3>{{text|First column}}</h3>\n    <p>Column text.</p>\n  </div>\n  <div>\n    <h3>Second column</h3>\n    <p>Column text.</p>\n  </div>\n</div>'
-  },
-  {
-    id: 'quote',
-    label: 'Quote',
-    hint: '<blockquote>',
-    quick: false,
-    html: '<blockquote>\n  <p>{{text|Quote text.}}</p>\n</blockquote>'
-  }
-]);
+    {
+      id: 'p',
+      label: 'Paragraph',
+      hint: '<p>',
+      quick: true,
+      html: '<p>{{text|New paragraph}}</p>'
+    },
+    {
+      id: 'h2',
+      label: 'Heading',
+      hint: '<h2>',
+      quick: true,
+      html: '<h2>{{text|New heading}}</h2>'
+    },
+    {
+      id: 'button',
+      label: 'Button link',
+      hint: '<a class="btn">',
+      quick: true,
+      html: '<a class="btn" href="contact.html">{{text|Call to action}}</a>'
+    },
+    {
+      id: 'image',
+      label: 'Image',
+      hint: '<img>',
+      quick: true,
+      html: '<img src="assets/media/image.jpg" alt="{{attr:text|Image description}}">'
+    },
+    {
+      id: 'lede',
+      label: 'Intro text',
+      hint: '<p class="lede">',
+      quick: false,
+      html: '<p class="lede">{{text|Intro text}}</p>'
+    },
+    {
+      id: 'list',
+      label: 'List',
+      hint: '<ul>',
+      quick: false,
+      html: '<ul>\n{{items|First item\nSecond item}}\n</ul>'
+    },
+    {
+      id: 'card',
+      label: 'Card',
+      hint: '<div class="card">',
+      quick: false,
+      html: '<div class="card">\n  <h3>{{text|Card title}}</h3>\n  <p>Card text.</p>\n</div>'
+    },
+    {
+      id: 'section',
+      label: 'Section wrapper',
+      hint: '<section>',
+      quick: false,
+      html: '<section class="section">\n  <div class="container">\n    <h2>{{text|Section heading}}</h2>\n    <p>Section text.</p>\n  </div>\n</section>'
+    },
+    {
+      id: 'columns',
+      label: 'Two columns',
+      hint: '<div class="columns">',
+      quick: false,
+      html: '<div class="columns">\n  <div>\n    <h3>{{text|First column}}</h3>\n    <p>Column text.</p>\n  </div>\n  <div>\n    <h3>Second column</h3>\n    <p>Column text.</p>\n  </div>\n</div>'
+    },
+    {
+      id: 'quote',
+      label: 'Quote',
+      hint: '<blockquote>',
+      quick: false,
+      html: '<blockquote>\n  <p>{{text|Quote text.}}</p>\n</blockquote>'
+    }
+  ]);
 
   function configEditorSnippets(config) {
-  const editor = config && typeof config === 'object' && !Array.isArray(config)
-    ? config.editor
-    : null;
-  const snippets = editor && typeof editor === 'object' && !Array.isArray(editor)
-    ? editor.snippets
-    : null;
-  return Array.isArray(snippets) ? snippets : [];
-}
+    const editor =
+      config && typeof config === 'object' && !Array.isArray(config) ? config.editor : null;
+    const snippets =
+      editor && typeof editor === 'object' && !Array.isArray(editor) ? editor.snippets : null;
+    return Array.isArray(snippets) ? snippets : [];
+  }
 
   function normalizeSnippetDefinition(snippet) {
-  if (!snippet || typeof snippet !== 'object' || Array.isArray(snippet)) return null;
+    if (!snippet || typeof snippet !== 'object' || Array.isArray(snippet)) return null;
 
-  const id = String(snippet.id || '').trim();
-  const label = String(snippet.label || id).trim();
-  const html = String(snippet.html || '').trim();
+    const id = String(snippet.id || '').trim();
+    const label = String(snippet.label || id).trim();
+    const html = String(snippet.html || '').trim();
 
-  if (!id || !label || !html) return null;
+    if (!id || !label || !html) return null;
 
-  return {
-    id,
-    label,
-    hint: String(snippet.hint || snippet.description || '').trim(),
-    quick: snippet.quick === true,
-    html
-  };
-}
+    return {
+      id,
+      label,
+      hint: String(snippet.hint || snippet.description || '').trim(),
+      quick: snippet.quick === true,
+      html
+    };
+  }
 
   function editorSnippetDefinitions(config = null) {
-  const byId = new Map();
+    const byId = new Map();
 
-  for (const snippet of DEFAULT_EDITOR_SNIPPETS) {
-    byId.set(snippet.id, { ...snippet });
+    for (const snippet of DEFAULT_EDITOR_SNIPPETS) {
+      byId.set(snippet.id, { ...snippet });
+    }
+
+    for (const snippet of configEditorSnippets(config)) {
+      const normalized = normalizeSnippetDefinition(snippet);
+      if (!normalized) continue;
+      byId.set(normalized.id, normalized);
+    }
+
+    return [...byId.values()];
   }
-
-  for (const snippet of configEditorSnippets(config)) {
-    const normalized = normalizeSnippetDefinition(snippet);
-    if (!normalized) continue;
-    byId.set(normalized.id, normalized);
-  }
-
-  return [...byId.values()];
-}
 
   function renderSnippetTemplate(template, selection = '') {
-  const selected = String(selection || '').trim();
+    const selected = String(selection || '').trim();
 
-  const withItems = String(template || '').replace(
-    /\{\{items(?:\|([^}]*))?\}\}/g,
-    (match, fallback = '') => {
-      const value = selected || fallback;
-      const items = String(value || '')
-        .split(/\n+/)
-        .map(item => item.trim())
-        .filter(Boolean);
-      return items.length
-        ? items.map(item => `  <li>${escapeHtml(item)}</li>`).join('\n')
-        : '';
-    }
-  );
+    const withItems = String(template || '').replace(
+      /\{\{items(?:\|([^}]*))?\}\}/g,
+      (match, fallback = '') => {
+        const value = selected || fallback;
+        const items = String(value || '')
+          .split(/\n+/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+        return items.length ? items.map((item) => `  <li>${escapeHtml(item)}</li>`).join('\n') : '';
+      }
+    );
 
-  return withItems.replace(
-    /\{\{(attr:)?text(?:\|([^}]*))?\}\}/g,
-    (match, attrPrefix, fallback = '') => {
-      const value = selected || fallback;
-      return attrPrefix ? escapeAttrLocal(value) : escapeHtml(value);
-    }
-  );
-}
+    return withItems.replace(
+      /\{\{(attr:)?text(?:\|([^}]*))?\}\}/g,
+      (match, attrPrefix, fallback = '') => {
+        const value = selected || fallback;
+        return attrPrefix ? escapeAttrLocal(value) : escapeHtml(value);
+      }
+    );
+  }
 
   function snippetTemplate(type, selection = '', config = null) {
-  const id = String(type || '').trim();
-  const snippet = editorSnippetDefinitions(config).find(item => item.id === id);
-  return snippet ? renderSnippetTemplate(snippet.html, selection) : '';
-}
+    const id = String(type || '').trim();
+    const snippet = editorSnippetDefinitions(config).find((item) => item.id === id);
+    return snippet ? renderSnippetTemplate(snippet.html, selection) : '';
+  }
 
   function imgTag({ url, alt = '' }) {
     return `<img src="${escapeAttrLocal(url)}" alt="${escapeAttrLocal(alt)}">`;
@@ -2510,7 +2743,7 @@ const EditorUtils = (() => {
   function resetFragmentValues(fragment, manifest) {
     if (!fragment) return null;
     const entry = Array.isArray(manifest)
-      ? manifest.find(item => item && item.id === fragment.id)
+      ? manifest.find((item) => item && item.id === fragment.id)
       : null;
     return {
       ...fragment,
@@ -2536,33 +2769,32 @@ const EditorUtils = (() => {
 })();
 
 /* ---------- image insert / alt text ---------- */
-let pendingMediaInsert=null;
+let pendingMediaInsert = null;
 
-
-function openAltDialog(media){
-  pendingMediaInsert=media;
-  el('altImageName').textContent=media.name || media.url || '';
-  el('altTextInput').value=MediaUtils.altFromFilename(media.name);
-  el('altDecorative').checked=false;
-  el('altTextInput').disabled=false;
+function openAltDialog(media) {
+  pendingMediaInsert = media;
+  el('altImageName').textContent = media.name || media.url || '';
+  el('altTextInput').value = MediaUtils.altFromFilename(media.name);
+  el('altDecorative').checked = false;
+  el('altTextInput').disabled = false;
   el('altModal').classList.add('show');
-  setTimeout(()=>el('altTextInput').select(),0);
+  setTimeout(() => el('altTextInput').select(), 0);
 }
 
-function closeAltDialog(){
+function closeAltDialog() {
   el('altModal').classList.remove('show');
-  pendingMediaInsert=null;
+  pendingMediaInsert = null;
 }
 
-function confirmAltInsert(){
-  if(!pendingMediaInsert) return;
-  const decorative=el('altDecorative').checked;
-  const alt=decorative ? '' : el('altTextInput').value.trim();
-  const tag=EditorUtils.imgTag({url:pendingMediaInsert.url,alt});
-  insertAtCursor(el('htmlArea'),tag);
+function confirmAltInsert() {
+  if (!pendingMediaInsert) return;
+  const decorative = el('altDecorative').checked;
+  const alt = decorative ? '' : el('altTextInput').value.trim();
+  const tag = EditorUtils.imgTag({ url: pendingMediaInsert.url, alt });
+  insertAtCursor(el('htmlArea'), tag);
   closeAltDialog();
   el('mediaModal').classList.remove('show');
-  toast('Image inserted','ok');
+  toast('Image inserted', 'ok');
 }
 
 /* ---------- media utility helpers ---------- */
@@ -2575,7 +2807,14 @@ const MediaUtils = (() => {
 
   function sanitizeFilename(name) {
     const parts = String(name || '').split('.');
-    const ext = parts.length > 1 ? '.' + parts.pop().toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+    const ext =
+      parts.length > 1
+        ? '.' +
+          parts
+            .pop()
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '')
+        : '';
     const base =
       parts
         .join('.')
@@ -2598,9 +2837,7 @@ const MediaUtils = (() => {
   function splitFilename(name) {
     const raw = String(name || '');
     const dot = raw.lastIndexOf('.');
-    return dot > 0
-      ? { base: raw.slice(0, dot), ext: raw.slice(dot) }
-      : { base: raw, ext: '' };
+    return dot > 0 ? { base: raw.slice(0, dot), ext: raw.slice(dot) } : { base: raw, ext: '' };
   }
 
   function uniqueNameCandidate(name, index) {
@@ -2614,7 +2851,7 @@ const MediaUtils = (() => {
 
     for (const fragment of fragments || []) {
       const html = fragment?.innerHTML || '';
-      if (needles.some(needle => needle && html.includes(needle))) {
+      if (needles.some((needle) => needle && html.includes(needle))) {
         hits.push(`${fragment.label || fragment.id} (${fragment.path})`);
       }
     }
@@ -2640,220 +2877,231 @@ const MediaUtils = (() => {
 })();
 
 /* ---------- media library ---------- */
-let gitcmsConfig=null;
-let gitcmsConfigLoaded=false;
-const pendingMediaPreviews=new Map(); // path -> {url,name,path,size,type,sha,expiresAt}
+let gitcmsConfig = null;
+let gitcmsConfigLoaded = false;
+const pendingMediaPreviews = new Map(); // path -> {url,name,path,size,type,sha,expiresAt}
 
-async function loadGitCMSConfig(force=false,refs=null){
-  if(gitcmsConfigLoaded && !force) return gitcmsConfig;
-  gitcmsConfigLoaded=true;
-  gitcmsConfig=null;
-  state.validation.config=[];
+async function loadGitCMSConfig(force = false, refs = null) {
+  if (gitcmsConfigLoaded && !force) return gitcmsConfig;
+  gitcmsConfigLoaded = true;
+  gitcmsConfig = null;
+  state.validation.config = [];
 
-  const refsToTry=refs||[state.workBranch,state.defaultBranch];
-  for(const ref of refsToTry){
-    try{
-      const r=await GitHubApi.getFile(CONFIG_PATH,ref);
-      let parsed=null;
-      try{
-        parsed=JSON.parse(dec(r.content));
-      }catch(parseErr){
+  const refsToTry = refs || [state.workBranch, state.defaultBranch];
+  for (const ref of refsToTry) {
+    try {
+      const r = await GitHubApi.getFile(CONFIG_PATH, ref);
+      let parsed = null;
+      try {
+        parsed = JSON.parse(dec(r.content));
+      } catch (parseErr) {
         addValidation('config', `${CONFIG_PATH} on ${ref}: invalid JSON — ${parseErr.message}`);
         return null;
       }
 
-      gitcmsConfig=parsed;
-      state.validation.config.push(...validateGitCMSConfig(parsed,`${CONFIG_PATH} on ${ref}`));
+      gitcmsConfig = parsed;
+      state.validation.config.push(...validateGitCMSConfig(parsed, `${CONFIG_PATH} on ${ref}`));
       return gitcmsConfig;
-    }catch(e){
-      if(e.status===404) continue;
+    } catch (e) {
+      if (e.status === 404) continue;
       addValidation('config', `${CONFIG_PATH}: config load failed — ${e.message}`);
-      console.warn('config load failed',e);
+      console.warn('config load failed', e);
       return null;
     }
   }
 
-  state.validation.config.push(...validateGitCMSConfig(null,CONFIG_PATH));
+  state.validation.config.push(...validateGitCMSConfig(null, CONFIG_PATH));
   return null;
 }
 
-function configMedia(){
-  const media=gitcmsConfig && gitcmsConfig.media;
-  return media && typeof media==='object' ? media : null;
+function configMedia() {
+  const media = gitcmsConfig && gitcmsConfig.media;
+  return media && typeof media === 'object' ? media : null;
 }
 
-function updateMediaDirNote(){
-  const dir=mediaDir();
-  el('mediaDirNote').innerHTML=`Folder: <span class="mono">${esc(dir)}</span> — <button class="tbtn ghost" style="padding:2px 6px;font-size:11px;display:inline-flex" onclick="el('mediaModal').classList.remove('show');openSettings()">change in Settings</button>`;
-  el('mediaBranchNote').textContent=state.workBranch;
+function updateMediaDirNote() {
+  const dir = mediaDir();
+  el('mediaDirNote').innerHTML =
+    `Folder: <span class="mono">${esc(dir)}</span> — <button class="tbtn ghost" style="padding:2px 6px;font-size:11px;display:inline-flex" onclick="el('mediaModal').classList.remove('show');openSettings()">change in Settings</button>`;
+  el('mediaBranchNote').textContent = state.workBranch;
 }
 
-function openSettings(){
-  const cfg=gitcmsConfig||{};
-  const media=(cfg.media && typeof cfg.media==='object') ? cfg.media : {};
-  el('cfgWorkBranch').textContent=state.workBranch;
-  el('settingsWorkBranchNote').textContent=state.workBranch;
-  el('cfgManifestPath').value=state.manifestPath||DEFAULT_MANIFEST_PATH;
-  el('cfgMediaDir').value=media.dir||DEFAULT_MEDIA_DIR;
-  el('cfgMediaPrefix').value=media.publicPrefix||defaultPublicPrefixFor(normalizeRepoPath(media.dir||DEFAULT_MEDIA_DIR));
-  el('cfgPreviewCss').value=previewCssList().join(', ');
+function openSettings() {
+  const cfg = gitcmsConfig || {};
+  const media = cfg.media && typeof cfg.media === 'object' ? cfg.media : {};
+  el('cfgWorkBranch').textContent = state.workBranch;
+  el('settingsWorkBranchNote').textContent = state.workBranch;
+  el('cfgManifestPath').value = state.manifestPath || DEFAULT_MANIFEST_PATH;
+  el('cfgMediaDir').value = media.dir || DEFAULT_MEDIA_DIR;
+  el('cfgMediaPrefix').value =
+    media.publicPrefix || defaultPublicPrefixFor(normalizeRepoPath(media.dir || DEFAULT_MEDIA_DIR));
+  el('cfgPreviewCss').value = previewCssList().join(', ');
   el('settingsErr').classList.remove('show');
   el('settingsModal').classList.add('show');
   el('cfgManifestPath').focus();
 }
 
-async function saveConfig(){
-  const newManifestPath=normalizeRepoPath(el('cfgManifestPath').value)||DEFAULT_MANIFEST_PATH;
-  const newMediaDir=normalizeRepoPath(el('cfgMediaDir').value)||DEFAULT_MEDIA_DIR;
-  const newMediaPrefix=normalizePublicPrefix(el('cfgMediaPrefix').value,newMediaDir);
-  const newPreviewCss=ConfigUtils.parsePreviewCssInput(el('cfgPreviewCss').value);
+async function saveConfig() {
+  const newManifestPath = normalizeRepoPath(el('cfgManifestPath').value) || DEFAULT_MANIFEST_PATH;
+  const newMediaDir = normalizeRepoPath(el('cfgMediaDir').value) || DEFAULT_MEDIA_DIR;
+  const newMediaPrefix = normalizePublicPrefix(el('cfgMediaPrefix').value, newMediaDir);
+  const newPreviewCss = ConfigUtils.parsePreviewCssInput(el('cfgPreviewCss').value);
   el('settingsErr').classList.remove('show');
 
-  const btn=el('settingsSave');
-  btn.disabled=true; btn.textContent='Saving…';
+  const btn = el('settingsSave');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
 
-  try{
-    const existing=(await loadGitCMSConfig(true,[state.workBranch]))||{};
-    const next=ConfigUtils.buildNextGitCMSConfig(existing,{
-      manifestPath:newManifestPath,
-      mediaDir:newMediaDir,
-      mediaPrefix:newMediaPrefix,
-      previewCss:newPreviewCss,
-      workBranch:state.workBranch,
-      defaultWorkBranch:DEFAULT_WORK_BRANCH
+  try {
+    const existing = (await loadGitCMSConfig(true, [state.workBranch])) || {};
+    const next = ConfigUtils.buildNextGitCMSConfig(existing, {
+      manifestPath: newManifestPath,
+      mediaDir: newMediaDir,
+      mediaPrefix: newMediaPrefix,
+      previewCss: newPreviewCss,
+      workBranch: state.workBranch,
+      defaultWorkBranch: DEFAULT_WORK_BRANCH
     });
 
-    let sha=null;
-    try{
-      const cur=await GitHubApi.getFileForWrite(CONFIG_PATH,state.workBranch);
-      sha=cur.sha;
-    }catch(e){ if(e.status!==404) throw e; }
+    let sha = null;
+    try {
+      const cur = await GitHubApi.getFileForWrite(CONFIG_PATH, state.workBranch);
+      sha = cur.sha;
+    } catch (e) {
+      if (e.status !== 404) throw e;
+    }
 
-    await GitHubApi.saveFile(CONFIG_PATH,{
-      message:'cms: update GitCMS config',
-      content:enc(JSON.stringify(next,null,2)+'\n'),
-      branch:state.workBranch,
+    await GitHubApi.saveFile(CONFIG_PATH, {
+      message: 'cms: update GitCMS config',
+      content: enc(JSON.stringify(next, null, 2) + '\n'),
+      branch: state.workBranch,
       sha
     });
     Store.clearContentTree();
 
-    const manifestChanged=newManifestPath!==state.manifestPath;
-    gitcmsConfig=next;
-    gitcmsConfigLoaded=true;
-    state.manifestPath=newManifestPath;
+    const manifestChanged = newManifestPath !== state.manifestPath;
+    gitcmsConfig = next;
+    gitcmsConfigLoaded = true;
+    state.manifestPath = newManifestPath;
     updateBranchLabels();
     renderEditorSnippetControls();
     updateMediaDirNote();
 
     el('settingsModal').classList.remove('show');
-    toast('Config saved to '+state.workBranch,'ok');
+    toast('Config saved to ' + state.workBranch, 'ok');
 
     // Reload if manifest path changed — fragments source has moved.
-    if(manifestChanged) await loadAll();
-  }catch(e){
-    el('settingsErr').textContent=GitHubErrors.githubErrorMessage(e,{action:'Save config'});
+    if (manifestChanged) await loadAll();
+  } catch (e) {
+    el('settingsErr').textContent = GitHubErrors.githubErrorMessage(e, { action: 'Save config' });
     el('settingsErr').classList.add('show');
-    toast('Config save failed','err');
-  }finally{
-    btn.disabled=false; btn.textContent='Save config';
+    toast('Config save failed', 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save config';
   }
 }
 
-function showMediaErr(msg){
-  const err=el('mediaErr');
-  err.textContent=msg;
+function showMediaErr(msg) {
+  const err = el('mediaErr');
+  err.textContent = msg;
   err.classList.add('show');
 }
-function clearMediaErr(){
-  const err=el('mediaErr');
-  err.textContent='';
+function clearMediaErr() {
+  const err = el('mediaErr');
+  err.textContent = '';
   err.classList.remove('show');
   clearMediaWarn();
 }
-function showMediaWarn(html){
-  const warn=el('mediaWarn');
-  warn.innerHTML=html;
+function showMediaWarn(html) {
+  const warn = el('mediaWarn');
+  warn.innerHTML = html;
   warn.classList.add('show');
 }
-function clearMediaWarn(){
-  const warn=el('mediaWarn');
-  if(!warn) return;
-  warn.innerHTML='';
+function clearMediaWarn() {
+  const warn = el('mediaWarn');
+  if (!warn) return;
+  warn.innerHTML = '';
   warn.classList.remove('show');
 }
-function setMediaGridEmpty(msg){
-  el('mediaGrid').innerHTML=`<div class="media-empty">${esc(msg)}</div>`;
+function setMediaGridEmpty(msg) {
+  el('mediaGrid').innerHTML = `<div class="media-empty">${esc(msg)}</div>`;
 }
 
-async function openMedia(){
+async function openMedia() {
   clearMediaErr();
   el('mediaModal').classList.add('show');
   // Ensure config is loaded so mediaDir() returns the correct path from gitcms.config.json.
-  if(!gitcmsConfigLoaded) await loadGitCMSConfig();
+  if (!gitcmsConfigLoaded) await loadGitCMSConfig();
   updateMediaDirNote();
   await loadMedia();
 }
 
-async function loadMedia(silent=false){
-  if(!silent) clearMediaErr();
-  const dir=mediaDir();
-  if(!dir){ if(!silent) showMediaErr('Set a repository folder first.'); return; }
+async function loadMedia(silent = false) {
+  if (!silent) clearMediaErr();
+  const dir = mediaDir();
+  if (!dir) {
+    if (!silent) showMediaErr('Set a repository folder first.');
+    return;
+  }
 
-  const grid=el('mediaGrid');
-  if(!silent) setMediaGridEmpty('Loading images…');
+  const grid = el('mediaGrid');
+  if (!silent) setMediaGridEmpty('Loading images…');
 
-  try{
-    const items=await GitHubApi.listContent(dir,state.workBranch);
-    const images=(Array.isArray(items)?items:[]).filter(i=>i.type==='file'&&MediaUtils.isImageFilename(i.name));
-    const now=Date.now();
-    const seen=new Set(images.map(i=>i.path));
+  try {
+    const items = await GitHubApi.listContent(dir, state.workBranch);
+    const images = (Array.isArray(items) ? items : []).filter(
+      (i) => i.type === 'file' && MediaUtils.isImageFilename(i.name)
+    );
+    const now = Date.now();
+    const seen = new Set(images.map((i) => i.path));
 
     // Keep local previews visible for just-uploaded images while GitHub's raw/API
     // edge caches settle. This prevents thumbnail appear → vanish → reappear.
-    for(const [path,p] of [...pendingMediaPreviews]){
-      if(p.expiresAt<=now){
+    for (const [path, p] of [...pendingMediaPreviews]) {
+      if (p.expiresAt <= now) {
         URL.revokeObjectURL(p.url);
         pendingMediaPreviews.delete(path);
       }
     }
 
-    const cards=[];
-    for(const item of images) cards.push(item);
-    for(const [path,p] of pendingMediaPreviews){
-      if(!seen.has(path)) cards.push(p);
+    const cards = [];
+    for (const item of images) cards.push(item);
+    for (const [path, p] of pendingMediaPreviews) {
+      if (!seen.has(path)) cards.push(p);
     }
 
-    if(!cards.length){
+    if (!cards.length) {
       setMediaGridEmpty(`No images found in ${dir}. Upload one to create/use this folder.`);
       return;
     }
 
-    grid.innerHTML='';
-    for(const item of cards.sort((a,b)=>a.name.localeCompare(b.name))){
-      const pending=pendingMediaPreviews.get(item.path);
-      renderMediaCard(item,pending?{localUrl:pending.url}:{});
+    grid.innerHTML = '';
+    for (const item of cards.sort((a, b) => a.name.localeCompare(b.name))) {
+      const pending = pendingMediaPreviews.get(item.path);
+      renderMediaCard(item, pending ? { localUrl: pending.url } : {});
     }
-  }catch(e){
-    if(silent) return; // ignore errors on background refresh
-    if(e.status===404){
-      if(pendingMediaPreviews.size){
-        grid.innerHTML='';
-        for(const p of pendingMediaPreviews.values()) renderMediaCard(p,{localUrl:p.url});
-      }else{
+  } catch (e) {
+    if (silent) return; // ignore errors on background refresh
+    if (e.status === 404) {
+      if (pendingMediaPreviews.size) {
+        grid.innerHTML = '';
+        for (const p of pendingMediaPreviews.values()) renderMediaCard(p, { localUrl: p.url });
+      } else {
         setMediaGridEmpty(`Folder not found yet: ${dir}. Upload an image to create it.`);
       }
-    }else{
+    } else {
       setMediaGridEmpty('Could not load media.');
-      showMediaErr(GitHubErrors.githubErrorMessage(e,{action:'Load media'}));
+      showMediaErr(GitHubErrors.githubErrorMessage(e, { action: 'Load media' }));
     }
   }
 }
 
-function renderMediaCard(item,{localUrl=null}={}){
-  const card=document.createElement('div');
-  card.className='media-card';
-  card.title=item.path;
-  card.innerHTML=`
+function renderMediaCard(item, { localUrl = null } = {}) {
+  const card = document.createElement('div');
+  card.className = 'media-card';
+  card.title = item.path;
+  card.innerHTML = `
     <button class="media-insert" type="button" title="Insert ${escAttr(item.path)}" style="display:block;width:100%;text-align:left">
       <div class="media-thumb placeholder">loading</div>
       <div class="media-name">${esc(item.name)}</div>
@@ -2866,85 +3114,84 @@ function renderMediaCard(item,{localUrl=null}={}){
     </div>`;
   el('mediaGrid').appendChild(card);
 
-  card.querySelector('.media-insert').onclick=()=>insertMediaImage(item.path);
-  card.querySelector('.media-action.insert').onclick=()=>insertMediaImage(item.path);
-  card.querySelector('.media-action.copy').onclick=()=>copyMediaUrl(item.path);
-  card.querySelector('.media-action.delete').onclick=()=>openDeleteMediaDialog(item,card);
+  card.querySelector('.media-insert').onclick = () => insertMediaImage(item.path);
+  card.querySelector('.media-action.insert').onclick = () => insertMediaImage(item.path);
+  card.querySelector('.media-action.copy').onclick = () => copyMediaUrl(item.path);
+  card.querySelector('.media-action.delete').onclick = () => openDeleteMediaDialog(item, card);
 
-  const slot=card.querySelector('.media-thumb');
-  if(localUrl){
-    const img=document.createElement('img');
-    img.className='media-thumb';
-    img.alt=item.name;
-    img.src=localUrl;
+  const slot = card.querySelector('.media-thumb');
+  if (localUrl) {
+    const img = document.createElement('img');
+    img.className = 'media-thumb';
+    img.alt = item.name;
+    img.src = localUrl;
     slot.replaceWith(img);
-  }else{
-    loadMediaThumb(item,slot);
+  } else {
+    loadMediaThumb(item, slot);
   }
 }
 
-async function loadMediaThumb(item,slot,attempt=0){
-  try{
-    if(item.size && item.size>3_000_000){
-      slot.textContent='large file';
+async function loadMediaThumb(item, slot, attempt = 0) {
+  try {
+    if (item.size && item.size > 3_000_000) {
+      slot.textContent = 'large file';
       return;
     }
-    const r=await GitHubApi.getFile(item.path,state.workBranch);
-    const img=document.createElement('img');
-    img.className='media-thumb';
-    img.alt=item.name;
-    img.src=`data:${mimeFromName(item.name)};base64,${String(r.content||'').replace(/\s/g,'')}`;
+    const r = await GitHubApi.getFile(item.path, state.workBranch);
+    const img = document.createElement('img');
+    img.className = 'media-thumb';
+    img.alt = item.name;
+    img.src = `data:${mimeFromName(item.name)};base64,${String(r.content || '').replace(/\s/g, '')}`;
     slot.replaceWith(img);
-  }catch(e){
-    if(attempt<5 && slot.isConnected){
-      slot.textContent='retrying';
-      const delays=[1000,2000,4000,8000,12000];
-      setTimeout(()=>{
-        if(slot.isConnected) loadMediaThumb(item,slot,attempt+1);
-      },delays[attempt]);
-    }else{
-      slot.textContent='no preview';
+  } catch (e) {
+    if (attempt < 5 && slot.isConnected) {
+      slot.textContent = 'retrying';
+      const delays = [1000, 2000, 4000, 8000, 12000];
+      setTimeout(() => {
+        if (slot.isConnected) loadMediaThumb(item, slot, attempt + 1);
+      }, delays[attempt]);
+    } else {
+      slot.textContent = 'no preview';
     }
   }
 }
 
-
-async function copyTextToClipboard(text){
-  try{
+async function copyTextToClipboard(text) {
+  try {
     await navigator.clipboard.writeText(text);
     return true;
-  }catch(e){
-    const ta=document.createElement('textarea');
-    ta.value=text;
-    ta.style.position='fixed';
-    ta.style.left='-9999px';
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
-    try{
+    try {
       document.execCommand('copy');
       return true;
-    }catch(err){
+    } catch (err) {
       return false;
-    }finally{
+    } finally {
       ta.remove();
     }
   }
 }
 
-async function copyMediaUrl(path){
-  const url=mediaPublicUrl(path);
-  const ok=await copyTextToClipboard(url);
-  if(ok) toast('Copied media URL','ok');
+async function copyMediaUrl(path) {
+  const url = mediaPublicUrl(path);
+  const ok = await copyTextToClipboard(url);
+  if (ok) toast('Copied media URL', 'ok');
   else {
-    showMediaErr('Copy failed. URL: '+url);
-    toast('Copy failed','err');
+    showMediaErr('Copy failed. URL: ' + url);
+    toast('Copy failed', 'err');
   }
 }
 
-function insertMediaImage(path){
-  if(!state.activeId){
-    toast('Select a fragment before inserting media','err');
+function insertMediaImage(path) {
+  if (!state.activeId) {
+    toast('Select a fragment before inserting media', 'err');
     return;
   }
   openAltDialog({
@@ -2953,215 +3200,244 @@ function insertMediaImage(path){
   });
 }
 
+let pendingDeleteMedia = null;
 
-let pendingDeleteMedia=null;
-
-function mediaUsageList(path){
+function mediaUsageList(path) {
   return MediaUtils.mediaUsageList({
-    fragments:[...state.frags.values()],
-    mediaUrl:mediaPublicUrl(path),
-    filename:path.split('/').pop()
+    fragments: [...state.frags.values()],
+    mediaUrl: mediaPublicUrl(path),
+    filename: path.split('/').pop()
   });
 }
 
+function openDeleteMediaDialog(item, card = null) {
+  pendingDeleteMedia = { item, card };
+  const path = item.path;
+  const name = item.name || path.split('/').pop();
+  const usage = mediaUsageList(path);
 
-function openDeleteMediaDialog(item,card=null){
-  pendingDeleteMedia={item,card};
-  const path=item.path;
-  const name=item.name || path.split('/').pop();
-  const usage=mediaUsageList(path);
-
-  el('deleteBranchName').textContent=state.workBranch;
-  el('deleteMediaTarget').textContent=name + ' — ' + path;
+  el('deleteBranchName').textContent = state.workBranch;
+  el('deleteMediaTarget').textContent = name + ' — ' + path;
   el('deleteMediaErr').classList.remove('show');
-  el('deleteMediaErr').textContent='';
+  el('deleteMediaErr').textContent = '';
 
-  const usageBox=el('deleteMediaUsage');
-  if(usage.length){
-    const shown=usage.slice(0,8).map(x=>`<li>${esc(x)}</li>`).join('');
-    const more=usage.length>8 ? `<li>…and ${usage.length-8} more</li>` : '';
-    usageBox.innerHTML=`<b>Possible usage found.</b> Deleting may break images in:<ul>${shown}${more}</ul>`;
+  const usageBox = el('deleteMediaUsage');
+  if (usage.length) {
+    const shown = usage
+      .slice(0, 8)
+      .map((x) => `<li>${esc(x)}</li>`)
+      .join('');
+    const more = usage.length > 8 ? `<li>…and ${usage.length - 8} more</li>` : '';
+    usageBox.innerHTML = `<b>Possible usage found.</b> Deleting may break images in:<ul>${shown}${more}</ul>`;
     usageBox.classList.add('show');
-  }else{
-    usageBox.innerHTML='';
+  } else {
+    usageBox.innerHTML = '';
     usageBox.classList.remove('show');
   }
 
-  el('deleteMediaConfirm').disabled=false;
-  el('deleteMediaConfirm').textContent='Delete';
+  el('deleteMediaConfirm').disabled = false;
+  el('deleteMediaConfirm').textContent = 'Delete';
   el('deleteMediaModal').classList.add('show');
 }
 
-function closeDeleteMediaDialog(){
+function closeDeleteMediaDialog() {
   el('deleteMediaModal').classList.remove('show');
-  pendingDeleteMedia=null;
+  pendingDeleteMedia = null;
 }
 
-async function confirmDeleteMedia(){
-  if(!pendingDeleteMedia) return;
-  const {item,card}=pendingDeleteMedia;
-  const path=item.path;
-  const name=item.name || path.split('/').pop();
+async function confirmDeleteMedia() {
+  if (!pendingDeleteMedia) return;
+  const { item, card } = pendingDeleteMedia;
+  const path = item.path;
+  const name = item.name || path.split('/').pop();
 
-  const btn=el('deleteMediaConfirm');
-  btn.disabled=true;
-  btn.textContent='Deleting…';
+  const btn = el('deleteMediaConfirm');
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
   el('deleteMediaErr').classList.remove('show');
 
-  if(card) card.classList.add('deleting');
+  if (card) card.classList.add('deleting');
 
-  try{
-    let sha=item.sha || null;
-    if(!sha){
-      const cur=await GitHubApi.getFileForWrite(path,state.workBranch);
-      sha=cur.sha;
+  try {
+    let sha = item.sha || null;
+    if (!sha) {
+      const cur = await GitHubApi.getFileForWrite(path, state.workBranch);
+      sha = cur.sha;
     }
 
-    await GitHubApi.deleteFile(path,{
-      message:'cms: delete media '+name,
+    await GitHubApi.deleteFile(path, {
+      message: 'cms: delete media ' + name,
       sha,
-      branch:state.workBranch
+      branch: state.workBranch
     });
     Store.clearContentTree();
 
-    const pending=pendingMediaPreviews.get(path);
-    if(pending && pending.url) URL.revokeObjectURL(pending.url);
+    const pending = pendingMediaPreviews.get(path);
+    if (pending && pending.url) URL.revokeObjectURL(pending.url);
     pendingMediaPreviews.delete(path);
 
     el('deleteMediaModal').classList.remove('show');
-    pendingDeleteMedia=null;
-    toast('Deleted from '+state.workBranch,'ok');
+    pendingDeleteMedia = null;
+    toast('Deleted from ' + state.workBranch, 'ok');
     await loadMedia();
-  }catch(e){
-    if(card) card.classList.remove('deleting');
-    const err=el('deleteMediaErr');
-    err.textContent=GitHubErrors.githubErrorMessage(e,{action:'Delete media'});
+  } catch (e) {
+    if (card) card.classList.remove('deleting');
+    const err = el('deleteMediaErr');
+    err.textContent = GitHubErrors.githubErrorMessage(e, { action: 'Delete media' });
     err.classList.add('show');
-    toast('Delete failed','err');
-  }finally{
-    btn.disabled=false;
-    btn.textContent='Delete';
+    toast('Delete failed', 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Delete';
   }
 }
 
-function insertAtCursor(textarea,text){
+function insertAtCursor(textarea, text) {
   textarea.focus();
-  const result=EditorUtils.computeCursorInsertion(
+  const result = EditorUtils.computeCursorInsertion(
     textarea.value,
     textarea.selectionStart ?? textarea.value.length,
     textarea.selectionEnd ?? textarea.value.length,
     text
   );
-  textarea.value=result.value;
-  textarea.setSelectionRange(result.cursor,result.cursor);
-  textarea.dispatchEvent(new Event('input',{bubbles:true}));
+  textarea.value = result.value;
+  textarea.setSelectionRange(result.cursor, result.cursor);
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-
-function readFileBase64(file){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onerror=()=>reject(new Error('Could not read file: '+file.name));
-    reader.onload=()=>resolve(String(reader.result).split(',')[1]);
+function readFileBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read file: ' + file.name));
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
     reader.readAsDataURL(file);
   });
 }
 
-
-async function mediaPathExists(path){
-  try{
-    await GitHubApi.getFileForWrite(path,state.workBranch);
+async function mediaPathExists(path) {
+  try {
+    await GitHubApi.getFileForWrite(path, state.workBranch);
     return true;
-  }catch(e){
-    if(e.status===404) return false;
+  } catch (e) {
+    if (e.status === 404) return false;
     throw e;
   }
 }
 
-async function uniqueMediaPath(dir,name){
-  let candidate=`${dir}/${name}`;
-  if(!(await mediaPathExists(candidate))) return {path:candidate,name,changed:false};
+async function uniqueMediaPath(dir, name) {
+  let candidate = `${dir}/${name}`;
+  if (!(await mediaPathExists(candidate))) return { path: candidate, name, changed: false };
 
-  for(let i=2;i<=99;i++){
-    const nextName=MediaUtils.uniqueNameCandidate(name,i);
-    const nextPath=`${dir}/${nextName}`;
-    if(!(await mediaPathExists(nextPath))){
-      return {path:nextPath,name:nextName,changed:true,original:name};
+  for (let i = 2; i <= 99; i++) {
+    const nextName = MediaUtils.uniqueNameCandidate(name, i);
+    const nextPath = `${dir}/${nextName}`;
+    if (!(await mediaPathExists(nextPath))) {
+      return { path: nextPath, name: nextName, changed: true, original: name };
     }
   }
 
-  throw new Error('Could not find a free filename for '+name);
+  throw new Error('Could not find a free filename for ' + name);
 }
 
-async function uploadMediaFiles(){
-  const input=el('mediaUpload');
-  const files=[...input.files];
-  if(!files.length) return;
+async function uploadMediaFiles() {
+  const input = el('mediaUpload');
+  const files = [...input.files];
+  if (!files.length) return;
   clearMediaErr();
-  const dir=mediaDir();
-  if(!dir){ showMediaErr('Set a repository folder first.'); return; }
+  const dir = mediaDir();
+  if (!dir) {
+    showMediaErr('Set a repository folder first.');
+    return;
+  }
 
-  try{
-    const stamp=new Date().toISOString().replace(/[:.]/g,'-').replace('T','-').slice(0,19);
-    const uploaded=[];
-    const renamed=[];
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '-').slice(0, 19);
+    const uploaded = [];
+    const renamed = [];
 
-    for(let i=0;i<files.length;i++){
-      const file=files[i];
-      if(!file.type.startsWith('image/')) throw new Error(file.name+' is not an image.');
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith('image/')) throw new Error(file.name + ' is not an image.');
 
-      const desiredName=MediaUtils.stampedUploadName({stamp,index:i,total:files.length,originalName:file.name});
-      const unique=await uniqueMediaPath(dir,desiredName);
-      const name=unique.name;
-      const path=unique.path;
+      const desiredName = MediaUtils.stampedUploadName({
+        stamp,
+        index: i,
+        total: files.length,
+        originalName: file.name
+      });
+      const unique = await uniqueMediaPath(dir, desiredName);
+      const name = unique.name;
+      const path = unique.path;
 
-      if(unique.changed){
-        renamed.push({from:unique.original,to:name});
+      if (unique.changed) {
+        renamed.push({ from: unique.original, to: name });
       }
 
-      const localUrl=URL.createObjectURL(file);
+      const localUrl = URL.createObjectURL(file);
 
       // Register the local preview before upload completes. If GitHub/raw caches
       // lag for a few seconds, the UI still keeps a stable thumbnail.
-      const pending={name,path,size:file.size,type:'file',url:localUrl,expiresAt:Date.now()+90_000};
-      pendingMediaPreviews.set(path,pending);
+      const pending = {
+        name,
+        path,
+        size: file.size,
+        type: 'file',
+        url: localUrl,
+        expiresAt: Date.now() + 90_000
+      };
+      pendingMediaPreviews.set(path, pending);
 
-      const content=await readFileBase64(file);
-      const put=await GitHubApi.saveFile(path,{message:'cms: upload media '+name,content,branch:state.workBranch});
-    Store.clearContentTree();
-      pending.sha=put && put.content ? put.content.sha : null;
+      const content = await readFileBase64(file);
+      const put = await GitHubApi.saveFile(path, {
+        message: 'cms: upload media ' + name,
+        content,
+        branch: state.workBranch
+      });
+      Store.clearContentTree();
+      pending.sha = put && put.content ? put.content.sha : null;
       uploaded.push(pending);
     }
 
-    input.value='';
-    toast(files.length===1?'Image uploaded to '+state.workBranch:'Images uploaded to '+state.workBranch,'ok');
+    input.value = '';
+    toast(
+      files.length === 1
+        ? 'Image uploaded to ' + state.workBranch
+        : 'Images uploaded to ' + state.workBranch,
+      'ok'
+    );
 
-    if(renamed.length){
-      const rows=renamed.slice(0,6).map(r=>`<div><span class="mono">${esc(r.from)}</span> already existed → <span class="mono">${esc(r.to)}</span></div>`).join('');
-      const more=renamed.length>6 ? `<div>…and ${renamed.length-6} more</div>` : '';
+    if (renamed.length) {
+      const rows = renamed
+        .slice(0, 6)
+        .map(
+          (r) =>
+            `<div><span class="mono">${esc(r.from)}</span> already existed → <span class="mono">${esc(r.to)}</span></div>`
+        )
+        .join('');
+      const more = renamed.length > 6 ? `<div>…and ${renamed.length - 6} more</div>` : '';
       showMediaWarn(`<b>Upload renamed to avoid overwriting existing media.</b>${rows}${more}`);
     }
 
-    const grid=el('mediaGrid');
-    if(grid.querySelector('.media-empty')) grid.innerHTML='';
-    for(const item of uploaded) renderMediaCard(item,{localUrl:item.url});
+    const grid = el('mediaGrid');
+    if (grid.querySelector('.media-empty')) grid.innerHTML = '';
+    for (const item of uploaded) renderMediaCard(item, { localUrl: item.url });
 
     // Refresh several times without clearing the grid. This lets GitHub's API/raw
     // edge caches catch up while the local preview remains visible.
-    [1500,4000,9000,20000].forEach(ms=>sleep(ms).then(()=>loadMedia(true)));
-  }catch(e){
-    showMediaErr(GitHubErrors.githubErrorMessage(e,{action:'Upload media'}));
-    toast('Upload failed','err');
+    [1500, 4000, 9000, 20000].forEach((ms) => sleep(ms).then(() => loadMedia(true)));
+  } catch (e) {
+    showMediaErr(GitHubErrors.githubErrorMessage(e, { action: 'Upload media' }));
+    toast('Upload failed', 'err');
   }
 }
 
-el('settingsBtn').onclick=openSettings;
-el('settingsClose').onclick=()=>el('settingsModal').classList.remove('show');
-el('settingsSave').onclick=saveConfig;
-el('mediaBtn').onclick=openMedia;
-el('mediaClose').onclick=()=>el('mediaModal').classList.remove('show');
-el('mediaRefreshBtn').onclick=loadMedia;
-el('mediaUpload').addEventListener('change',uploadMediaFiles);
+el('settingsBtn').onclick = openSettings;
+el('settingsClose').onclick = () => el('settingsModal').classList.remove('show');
+el('settingsSave').onclick = saveConfig;
+el('mediaBtn').onclick = openMedia;
+el('mediaClose').onclick = () => el('mediaModal').classList.remove('show');
+el('mediaRefreshBtn').onclick = loadMedia;
+el('mediaUpload').addEventListener('change', uploadMediaFiles);
 
 /* ---------- publish utility helpers ---------- */
 const PublishUtils = (() => {
@@ -3184,7 +3460,7 @@ const PublishUtils = (() => {
     const files = compare && Array.isArray(compare.files) ? compare.files : [];
     const ahead = compare && typeof compare.ahead_by === 'number' ? compare.ahead_by : null;
     const total = files.length;
-    const shown = files.slice(0, limit).map(file => ({
+    const shown = files.slice(0, limit).map((file) => ({
       status: file.status || 'changed',
       label: statusLabel(file.status),
       path: displayFilePath(file)
@@ -3216,7 +3492,8 @@ const PublishUtils = (() => {
   function publishBlockedReason(compare) {
     const summary = summarizeCompare(compare);
     if (!summary.hasCompare) return 'Changed files could not be loaded. Refresh and try again.';
-    if (!canPublishCompare(compare)) return 'Nothing to publish. The content branch is already up to date with the live branch.';
+    if (!canPublishCompare(compare))
+      return 'Nothing to publish. The content branch is already up to date with the live branch.';
     return '';
   }
 
@@ -3246,8 +3523,10 @@ const PublishUtils = (() => {
   function mergeResultSha(result) {
     if (!result) return '';
     if (typeof result.sha === 'string' && result.sha) return result.sha;
-    if (result.commit && typeof result.commit.sha === 'string' && result.commit.sha) return result.commit.sha;
-    if (result.object && typeof result.object.sha === 'string' && result.object.sha) return result.object.sha;
+    if (result.commit && typeof result.commit.sha === 'string' && result.commit.sha)
+      return result.commit.sha;
+    if (result.object && typeof result.object.sha === 'string' && result.object.sha)
+      return result.object.sha;
     return '';
   }
 
@@ -3313,118 +3592,130 @@ const PublishUtils = (() => {
 })();
 
 /* ---------- save manifest (when none existed) ---------- */
-el('saveManifestBtn').onclick=async()=>{
-  const man=[...state.frags.values()].map(f=>({id:f.id,file:f.path,label:f.label}));
-  try{
-    let sha=null;
-    try{
-      const cur=await GitHubApi.getFileForWrite(state.manifestPath,state.workBranch);
-      sha=cur.sha;
-    }catch(e){ if(e.status!==404) throw e; }
+el('saveManifestBtn').onclick = async () => {
+  const man = [...state.frags.values()].map((f) => ({ id: f.id, file: f.path, label: f.label }));
+  try {
+    let sha = null;
+    try {
+      const cur = await GitHubApi.getFileForWrite(state.manifestPath, state.workBranch);
+      sha = cur.sha;
+    } catch (e) {
+      if (e.status !== 404) throw e;
+    }
 
-    await GitHubApi.saveFile(state.manifestPath,{
-      message:'cms: save '+state.manifestPath,
-      content:enc(JSON.stringify(man,null,2)+'\n'),
-      branch:state.workBranch,
+    await GitHubApi.saveFile(state.manifestPath, {
+      message: 'cms: save ' + state.manifestPath,
+      content: enc(JSON.stringify(man, null, 2) + '\n'),
+      branch: state.workBranch,
       sha
     });
     Store.clearContentTree();
-    state.manifest=man;
+    state.manifest = man;
     el('banner').classList.remove('show');
-    toast('Manifest saved to '+state.workBranch,'ok');
-  }catch(e){ toast('Manifest save failed: '+e.message,'err'); }
+    toast('Manifest saved to ' + state.workBranch, 'ok');
+  } catch (e) {
+    toast('Manifest save failed: ' + e.message, 'err');
+  }
 };
 
 /* ---------- publish summary ---------- */
-let lastPublishCompare=null;
+let lastPublishCompare = null;
 
-function setPublishConfirmState(compare){
-  const btn=el('pubConfirm');
-  if(!btn) return;
-  const blocked=PublishUtils.publishBlockedReason(compare);
-  btn.disabled=!!blocked;
-  btn.title=blocked;
+function setPublishConfirmState(compare) {
+  const btn = el('pubConfirm');
+  if (!btn) return;
+  const blocked = PublishUtils.publishBlockedReason(compare);
+  btn.disabled = !!blocked;
+  btn.title = blocked;
 }
 
-function renderPublishSummary(compare){
-  lastPublishCompare=compare;
+function renderPublishSummary(compare) {
+  lastPublishCompare = compare;
   setPublishConfirmState(compare);
-  const box=el('pubSummary');
-  const summary=PublishUtils.summarizeCompare(compare,{limit:40});
+  const box = el('pubSummary');
+  const summary = PublishUtils.summarizeCompare(compare, { limit: 40 });
 
-  if(!summary.hasCompare){
-    box.innerHTML='<div class="publish-empty">Could not load changed files. Publishing may still work.</div>';
+  if (!summary.hasCompare) {
+    box.innerHTML =
+      '<div class="publish-empty">Could not load changed files. Publishing may still work.</div>';
     return;
   }
 
-  if(summary.nothingToPublish){
-    box.innerHTML=
-      `<div class="ps-head"><span class="ps-title">Nothing to publish</span>`+
-      `<span class="ps-count">${esc(state.workBranch)} is up to date with ${esc(state.defaultBranch)}</span></div>`+
+  if (summary.nothingToPublish) {
+    box.innerHTML =
+      `<div class="ps-head"><span class="ps-title">Nothing to publish</span>` +
+      `<span class="ps-count">${esc(state.workBranch)} is up to date with ${esc(state.defaultBranch)}</span></div>` +
       `<div class="publish-empty">No file changes found between branches.</div>`;
     return;
   }
 
-  const rows=summary.shown.map(file=>{
-    return `<li><span class="pf-status ${escAttr(file.status)}">${esc(file.label)}</span><span class="pf-path" title="${escAttr(file.path)}">${esc(file.path)}</span></li>`;
-  }).join('');
+  const rows = summary.shown
+    .map((file) => {
+      return `<li><span class="pf-status ${escAttr(file.status)}">${esc(file.label)}</span><span class="pf-path" title="${escAttr(file.path)}">${esc(file.path)}</span></li>`;
+    })
+    .join('');
 
-  const more=summary.moreCount
+  const more = summary.moreCount
     ? `<li><span class="pf-status">more</span><span class="pf-path">…and ${summary.moreCount} more files</span></li>`
     : '';
 
-  box.innerHTML=
-    `<div class="ps-head"><span class="ps-title">Files to publish</span>`+
-    `<span class="ps-count">${summary.total} file${summary.total===1?'':'s'}${summary.ahead!==null ? ` · ${summary.ahead} commit${summary.ahead===1?'':'s'} ahead` : ''}</span></div>`+
+  box.innerHTML =
+    `<div class="ps-head"><span class="ps-title">Files to publish</span>` +
+    `<span class="ps-count">${summary.total} file${summary.total === 1 ? '' : 's'}${summary.ahead !== null ? ` · ${summary.ahead} commit${summary.ahead === 1 ? '' : 's'} ahead` : ''}</span></div>` +
     `<ul class="publish-files">${rows || '<li><span class="pf-path">Branch has commits but no file list was returned.</span></li>'}${more}</ul>`;
 }
 
-async function loadPublishSummary(){
-  const box=el('pubSummary');
-  const btn=el('pubConfirm');
-  if(btn){ btn.disabled=true; btn.title='Loading changed files…'; }
-  box.innerHTML='<div class="publish-empty">Loading changed files…</div>';
+async function loadPublishSummary() {
+  const box = el('pubSummary');
+  const btn = el('pubConfirm');
+  if (btn) {
+    btn.disabled = true;
+    btn.title = 'Loading changed files…';
+  }
+  box.innerHTML = '<div class="publish-empty">Loading changed files…</div>';
 
-  try{
+  try {
     // Ref SHA check is more authoritative than compare output. GitHub's compare
     // response can briefly/stickily report stale ahead data, but if both branch
     // refs point to the same commit there is definitely nothing to publish.
-    const [baseRef,headRef]=await Promise.all([
+    const [baseRef, headRef] = await Promise.all([
       GitHubApi.getRef(state.defaultBranch),
       GitHubApi.getRef(state.workBranch)
     ]);
 
-    const pinnedBaseSha=LastWriteCommitCache.get(state.defaultBranch);
-    const pinnedHeadSha=LastWriteCommitCache.get(state.workBranch);
+    const pinnedBaseSha = LastWriteCommitCache.get(state.defaultBranch);
+    const pinnedHeadSha = LastWriteCommitCache.get(state.workBranch);
 
-    if(PublishUtils.refsOrPinnedBranchesAligned({baseRef,headRef,pinnedBaseSha,pinnedHeadSha})){
+    if (
+      PublishUtils.refsOrPinnedBranchesAligned({ baseRef, headRef, pinnedBaseSha, pinnedHeadSha })
+    ) {
       renderPublishSummary(PublishUtils.alignedCompareSummary());
       return;
     }
 
     // Use effective SHAs to avoid stale branch refs after Save or Publish.
-    const baseSha=PublishUtils.effectiveBaseSha({baseRef,pinnedSha:pinnedBaseSha});
-    const headSha=PublishUtils.effectiveHeadSha({headRef,pinnedSha:pinnedHeadSha});
-    const compare=(baseSha && headSha)
-      ? await GitHubApi.compare(baseSha,headSha)
-      : await GitHubApi.compare(state.defaultBranch,state.workBranch);
+    const baseSha = PublishUtils.effectiveBaseSha({ baseRef, pinnedSha: pinnedBaseSha });
+    const headSha = PublishUtils.effectiveHeadSha({ headRef, pinnedSha: pinnedHeadSha });
+    const compare =
+      baseSha && headSha
+        ? await GitHubApi.compare(baseSha, headSha)
+        : await GitHubApi.compare(state.defaultBranch, state.workBranch);
     renderPublishSummary(compare);
-  }catch(e){
-    lastPublishCompare=null;
+  } catch (e) {
+    lastPublishCompare = null;
     setPublishConfirmState(null);
-    box.innerHTML=
-      `<div class="publish-empty">Could not load changed files: ${esc(e.message)}.</div>`;
+    box.innerHTML = `<div class="publish-empty">Could not load changed files: ${esc(e.message)}.</div>`;
   }
 }
 
-async function openPublishModal(){
+async function openPublishModal() {
   syncActiveFromTextarea();
-  const dirty=Store.dirtyFragments();
-  const warn=el('pubWarn');
-  if(dirty.length){
-    warn.innerHTML=`<b>${dirty.length}</b> fragment${dirty.length===1?' has':'s have'} unsaved changes that won't be published. Save them to ${esc(state.workBranch)} first.`;
+  const dirty = Store.dirtyFragments();
+  const warn = el('pubWarn');
+  if (dirty.length) {
+    warn.innerHTML = `<b>${dirty.length}</b> fragment${dirty.length === 1 ? ' has' : 's have'} unsaved changes that won't be published. Save them to ${esc(state.workBranch)} first.`;
     warn.classList.add('show');
-  }else warn.classList.remove('show');
+  } else warn.classList.remove('show');
 
   el('pubErr').classList.remove('show');
   el('pubModal').classList.add('show');
@@ -3438,13 +3729,19 @@ const DiagnosticsUtils = (() => {
     if (key === 'Validation warnings' && value !== '0') return 'warn';
     if (key === 'Config loaded' && value === 'not found') return 'warn';
     if (key === 'Manifest loaded' && value === 'no') return 'warn';
-    if (key === 'Cache status' && /stale|differs|failed|warning/i.test(String(value))) return 'warn';
+    if (key === 'Cache status' && /stale|differs|failed|warning/i.test(String(value)))
+      return 'warn';
     if (key === 'Cache status' && /ok|aligned|none/i.test(String(value))) return 'ok';
 
     if (
-      ['Repository', 'Default branch', 'Content branch', 'Media folder', 'Media URL prefix', 'Cache status'].includes(
-        key
-      ) &&
+      [
+        'Repository',
+        'Default branch',
+        'Content branch',
+        'Media folder',
+        'Media URL prefix',
+        'Cache status'
+      ].includes(key) &&
       value &&
       !/not|unknown/.test(String(value))
     ) {
@@ -3453,7 +3750,6 @@ const DiagnosticsUtils = (() => {
 
     return '';
   }
-
 
   function diagnosticsBadgeText(statusClass) {
     if (statusClass === 'ok') return 'OK';
@@ -3487,14 +3783,13 @@ const DiagnosticsUtils = (() => {
     return (
       base +
       '\n\nValidation warnings:\n' +
-      warnings.map(warning => `- ${warning.kind}: ${warning.msg}`).join('\n')
+      warnings.map((warning) => `- ${warning.kind}: ${warning.msg}`).join('\n')
     );
   }
 
-
   function diagnosticsTextSections(sections = [], warnings = []) {
     const body = sections
-      .map(section => {
+      .map((section) => {
         const rows = Object.entries(section.data || {})
           .map(([key, value]) => `${key}: ${value}`)
           .join('\n');
@@ -3507,7 +3802,7 @@ const DiagnosticsUtils = (() => {
     return (
       body +
       '\n\nValidation warnings:\n' +
-      warnings.map(warning => `- ${warning.kind}: ${warning.msg}`).join('\n')
+      warnings.map((warning) => `- ${warning.kind}: ${warning.msg}`).join('\n')
     );
   }
 
@@ -3519,7 +3814,6 @@ const DiagnosticsUtils = (() => {
       mediaPrefix: mediaPrefix || 'not set'
     };
   }
-
 
   function inferGitHubPagesAdminRepo({ hostname = '', pathname = '' } = {}) {
     const host = String(hostname || '').toLowerCase();
@@ -3554,378 +3848,390 @@ const DiagnosticsUtils = (() => {
 })();
 
 /* ---------- publish ---------- */
-let publishInFlight=false;
-el('publishBtn').onclick=openPublishModal;
-el('pubCancel').onclick=()=>el('pubModal').classList.remove('show');
-el('pubConfirm').onclick=doPublish;
+let publishInFlight = false;
+el('publishBtn').onclick = openPublishModal;
+el('pubCancel').onclick = () => el('pubModal').classList.remove('show');
+el('pubConfirm').onclick = doPublish;
 
-async function branchRefInfo(){
-  const [baseRef,headRef]=await Promise.all([
+async function branchRefInfo() {
+  const [baseRef, headRef] = await Promise.all([
     GitHubApi.getRef(state.defaultBranch),
     GitHubApi.getRef(state.workBranch)
   ]);
-  const pinnedBaseSha=LastWriteCommitCache.get(state.defaultBranch);
-  const pinnedHeadSha=LastWriteCommitCache.get(state.workBranch);
-  return {baseRef,headRef,pinnedBaseSha,pinnedHeadSha};
+  const pinnedBaseSha = LastWriteCommitCache.get(state.defaultBranch);
+  const pinnedHeadSha = LastWriteCommitCache.get(state.workBranch);
+  return { baseRef, headRef, pinnedBaseSha, pinnedHeadSha };
 }
 
-function branchInfoAligned(info){
+function branchInfoAligned(info) {
   return PublishUtils.refsOrPinnedBranchesAligned({
-    baseRef:info.baseRef,
-    headRef:info.headRef,
-    pinnedBaseSha:info.pinnedBaseSha,
-    pinnedHeadSha:info.pinnedHeadSha
+    baseRef: info.baseRef,
+    headRef: info.headRef,
+    pinnedBaseSha: info.pinnedBaseSha,
+    pinnedHeadSha: info.pinnedHeadSha
   });
 }
 
-async function branchesAreAligned(){
+async function branchesAreAligned() {
   return branchInfoAligned(await branchRefInfo());
 }
 
-async function ensureWorkBranchUsesPinnedSha(info){
+async function ensureWorkBranchUsesPinnedSha(info) {
   // Immediately after Save → Content, GitHub's content branch ref can lag.
   // If we know the saved commit SHA, make sure refs/heads/content points to it
   // before publish uses the branch name/SHA.
-  const pinned=info && info.pinnedHeadSha;
-  if(!pinned) return;
-  const current=PublishUtils.refSha(info.headRef);
-  if(current===pinned) return;
-  await GitHubApi.updateRef(state.workBranch,pinned,{force:true});
+  const pinned = info && info.pinnedHeadSha;
+  if (!pinned) return;
+  const current = PublishUtils.refSha(info.headRef);
+  if (current === pinned) return;
+  await GitHubApi.updateRef(state.workBranch, pinned, { force: true });
   Store.clearContentTree();
 }
 
-async function publishContentToMain(){
+async function publishContentToMain() {
   // Source-of-truth model:
   // content is the CMS source branch. main is deploy-only.
   // Therefore publishing should move main to the effective content commit,
   // not merge main into content and then merge content into main.
-  const info=await branchRefInfo();
+  const info = await branchRefInfo();
 
-  if(branchInfoAligned(info)){
-    lastPublishCompare=PublishUtils.alignedCompareSummary();
-    return {published:false,reason:'already-aligned'};
+  if (branchInfoAligned(info)) {
+    lastPublishCompare = PublishUtils.alignedCompareSummary();
+    return { published: false, reason: 'already-aligned' };
   }
 
   await ensureWorkBranchUsesPinnedSha(info);
 
-  const fresh=await branchRefInfo();
-  const publishSha=PublishUtils.effectivePublishSha({
-    headRef:fresh.headRef,
-    pinnedHeadSha:fresh.pinnedHeadSha
+  const fresh = await branchRefInfo();
+  const publishSha = PublishUtils.effectivePublishSha({
+    headRef: fresh.headRef,
+    pinnedHeadSha: fresh.pinnedHeadSha
   });
 
-  if(!publishSha) throw new Error(`Could not resolve ${state.workBranch} commit SHA.`);
+  if (!publishSha) throw new Error(`Could not resolve ${state.workBranch} commit SHA.`);
 
-  await GitHubApi.updateRef(state.defaultBranch,publishSha,{force:true});
+  await GitHubApi.updateRef(state.defaultBranch, publishSha, { force: true });
   Store.clearContentTree();
 
   // updateRef() succeeded, so locally pin both branches to the deployed SHA.
   // GitHub's ref/compare APIs can lag briefly; the cache prevents false errors
   // and repeated publish prompts immediately after a successful publish.
-  LastWriteCommitCache.set(state.defaultBranch,publishSha);
-  LastWriteCommitCache.set(state.workBranch,publishSha);
-  lastPublishCompare=PublishUtils.alignedCompareSummary();
+  LastWriteCommitCache.set(state.defaultBranch, publishSha);
+  LastWriteCommitCache.set(state.workBranch, publishSha);
+  lastPublishCompare = PublishUtils.alignedCompareSummary();
 
-  return {published:true,sha:publishSha};
+  return { published: true, sha: publishSha };
 }
 
-async function doPublish(){
-  if(publishInFlight) return;
-  const btn=el('pubConfirm');
-  const err=el('pubErr');
+async function doPublish() {
+  if (publishInFlight) return;
+  const btn = el('pubConfirm');
+  const err = el('pubErr');
   err.classList.remove('show');
 
-  publishInFlight=true;
-  btn.disabled=true;
-  btn.textContent='Checking…';
+  publishInFlight = true;
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
 
-  try{
-    const info=await branchRefInfo();
-    if(branchInfoAligned(info)){
-      const aligned=PublishUtils.alignedCompareSummary();
-      lastPublishCompare=aligned;
+  try {
+    const info = await branchRefInfo();
+    if (branchInfoAligned(info)) {
+      const aligned = PublishUtils.alignedCompareSummary();
+      lastPublishCompare = aligned;
       renderPublishSummary(aligned);
-      err.textContent=PublishUtils.publishBlockedReason(aligned);
+      err.textContent = PublishUtils.publishBlockedReason(aligned);
       err.classList.add('show');
       return;
     }
 
     await ensureWorkBranchUsesPinnedSha(info);
 
-    const freshInfo=await branchRefInfo();
-    const baseSha=PublishUtils.effectiveBaseSha({
-      baseRef:freshInfo.baseRef,
-      pinnedSha:freshInfo.pinnedBaseSha
+    const freshInfo = await branchRefInfo();
+    const baseSha = PublishUtils.effectiveBaseSha({
+      baseRef: freshInfo.baseRef,
+      pinnedSha: freshInfo.pinnedBaseSha
     });
-    const headSha=PublishUtils.effectiveHeadSha({
-      headRef:freshInfo.headRef,
-      pinnedSha:freshInfo.pinnedHeadSha
+    const headSha = PublishUtils.effectiveHeadSha({
+      headRef: freshInfo.headRef,
+      pinnedSha: freshInfo.pinnedHeadSha
     });
-    const freshCompare=(baseSha && headSha)
-      ? await GitHubApi.compare(baseSha,headSha)
-      : await GitHubApi.compare(state.defaultBranch,state.workBranch);
-    lastPublishCompare=freshCompare;
+    const freshCompare =
+      baseSha && headSha
+        ? await GitHubApi.compare(baseSha, headSha)
+        : await GitHubApi.compare(state.defaultBranch, state.workBranch);
+    lastPublishCompare = freshCompare;
 
-    if(!PublishUtils.canPublishCompare(freshCompare)){
+    if (!PublishUtils.canPublishCompare(freshCompare)) {
       renderPublishSummary(freshCompare);
-      err.textContent=PublishUtils.publishBlockedReason(freshCompare);
+      err.textContent = PublishUtils.publishBlockedReason(freshCompare);
       err.classList.add('show');
       return;
     }
 
-    btn.textContent='Publishing…';
+    btn.textContent = 'Publishing…';
     await publishContentToMain();
 
     el('pubModal').classList.remove('show');
-    toast('Published — main now matches content','ok');
+    toast('Published — main now matches content', 'ok');
     await loadAll();
-  }catch(e){
-    const conflict=PublishUtils.publishConflictInfo(e,{
-      owner:state.owner,
-      repo:state.repo,
-      base:state.defaultBranch,
-      head:state.workBranch,
-      workBranch:state.workBranch,
-      defaultBranch:state.defaultBranch
+  } catch (e) {
+    const conflict = PublishUtils.publishConflictInfo(e, {
+      owner: state.owner,
+      repo: state.repo,
+      base: state.defaultBranch,
+      head: state.workBranch,
+      workBranch: state.workBranch,
+      defaultBranch: state.defaultBranch
     });
-    if(conflict){
-      err.innerHTML=`${esc(conflict.message)} `+
+    if (conflict) {
+      err.innerHTML =
+        `${esc(conflict.message)} ` +
         `Resolve it on GitHub: <a href="${escAttr(conflict.url)}" target="_blank" rel="noopener">open the compare view ↗</a>.`;
-    }else{
-      err.textContent=GitHubErrors.githubErrorMessage(e,{action:'Publish'});
+    } else {
+      err.textContent = GitHubErrors.githubErrorMessage(e, { action: 'Publish' });
     }
     err.classList.add('show');
-  }finally{
-    publishInFlight=false;
-    btn.textContent='Publish';
+  } finally {
+    publishInFlight = false;
+    btn.textContent = 'Publish';
     setPublishConfirmState(lastPublishCompare);
   }
 }
 
 /* ---------- diagnostics ---------- */
-let lastDiagnosticsCacheData=null;
+let lastDiagnosticsCacheData = null;
 
-function diagnosticsAdminData(){
-  const expectedVersion=GITCMS_VERSION;
-  const adminSourceRepo=DiagnosticsUtils.inferGitHubPagesAdminRepo({
-    hostname:location.hostname,
-    pathname:location.pathname
+function diagnosticsAdminData() {
+  const expectedVersion = GITCMS_VERSION;
+  const adminSourceRepo = DiagnosticsUtils.inferGitHubPagesAdminRepo({
+    hostname: location.hostname,
+    pathname: location.pathname
   });
 
   return {
-    "Current admin version": GITCMS_VERSION,
-    "Expected stable version": expectedVersion,
-    "Version status": DiagnosticsUtils.adminVersionStatus({
-      currentVersion:GITCMS_VERSION,
+    'Current admin version': GITCMS_VERSION,
+    'Expected stable version': expectedVersion,
+    'Version status': DiagnosticsUtils.adminVersionStatus({
+      currentVersion: GITCMS_VERSION,
       expectedVersion
     }),
-    "Admin hosted URL": location.href,
-    "Admin origin": location.origin === "null" ? "local file" : location.origin,
-    "Admin path": location.pathname || "/",
-    "Admin source repo": adminSourceRepo || "not inferred",
-    "Content/site repo": state.owner && state.repo ? `https://github.com/${state.owner}/${state.repo}` : "not connected"
+    'Admin hosted URL': location.href,
+    'Admin origin': location.origin === 'null' ? 'local file' : location.origin,
+    'Admin path': location.pathname || '/',
+    'Admin source repo': adminSourceRepo || 'not inferred',
+    'Content/site repo':
+      state.owner && state.repo
+        ? `https://github.com/${state.owner}/${state.repo}`
+        : 'not connected'
   };
 }
 
-function diagnosticsData(){
-  const dirty=Store.dirtyFragments();
-  const active=state.activeId ? state.frags.get(state.activeId) : null;
-  const repoUrl=state.owner && state.repo ? `https://github.com/${state.owner}/${state.repo}` : '';
-  const contentUrl=state.owner && state.repo ? repoUrlForBranch() : '';
-  const pagesFallback=state.owner && state.repo ? fallbackPagesUrl() : '';
+function diagnosticsData() {
+  const dirty = Store.dirtyFragments();
+  const active = state.activeId ? state.frags.get(state.activeId) : null;
+  const repoUrl =
+    state.owner && state.repo ? `https://github.com/${state.owner}/${state.repo}` : '';
+  const contentUrl = state.owner && state.repo ? repoUrlForBranch() : '';
+  const pagesFallback = state.owner && state.repo ? fallbackPagesUrl() : '';
 
   return {
-    "GitCMS version": GITCMS_VERSION,
-    "Content repository": state.owner && state.repo ? `${state.owner}/${state.repo}` : "not connected",
-    "Default branch": state.defaultBranch || "unknown",
-    "Content branch": state.workBranch || "unknown",
-    "CMS source branch": state.workBranch || "unknown",
-    "Main fallback": "disabled",
-    "Content commit SHA": state.contentTree ? state.contentTree.commitSha : "not loaded",
-    "Content tree source": state.contentTree ? (state.contentTree.source || "unknown") : "not loaded",
-    "Pinned last write SHA": LastWriteCommitCache.get(state.workBranch) || "none",
-    "Content tree SHA": state.contentTree ? state.contentTree.treeSha : "not loaded",
-    "File read mode": "Git data API blob read",
-    "Manifest path": state.manifestPath || DEFAULT_MANIFEST_PATH,
-    "Manifest loaded": state.manifest ? "yes" : "no",
-    "Config path": CONFIG_PATH,
-    "Config loaded": gitcmsConfigLoaded ? (gitcmsConfig ? "yes" : "not found") : "not loaded",
-    "Validation warnings": String(validationCount()),
-    "Media folder": mediaDir() || "not set",
-    "Media URL prefix": mediaPrefix() || "not set",
-    "Preview CSS": previewCssList().length ? previewCssList().join(", ") : "none",
-    "Preview mode": state.previewMode,
-    "Fragments loaded": String(state.frags.size),
-    "Files loaded": String(state.files.size),
-    "Unsaved fragments": String(dirty.length),
-    "Active fragment": active ? `#${active.id} — ${active.label}` : "none",
-    "Active file": active ? active.path : "none",
-    "Content repository URL": repoUrl || "not connected",
-    "Content branch URL": contentUrl || "not connected",
-    "Live site URL": pagesFallback || "not connected",
-    "Admin origin": location.origin === "null" ? "local file" : location.origin
+    'GitCMS version': GITCMS_VERSION,
+    'Content repository':
+      state.owner && state.repo ? `${state.owner}/${state.repo}` : 'not connected',
+    'Default branch': state.defaultBranch || 'unknown',
+    'Content branch': state.workBranch || 'unknown',
+    'CMS source branch': state.workBranch || 'unknown',
+    'Main fallback': 'disabled',
+    'Content commit SHA': state.contentTree ? state.contentTree.commitSha : 'not loaded',
+    'Content tree source': state.contentTree ? state.contentTree.source || 'unknown' : 'not loaded',
+    'Pinned last write SHA': LastWriteCommitCache.get(state.workBranch) || 'none',
+    'Content tree SHA': state.contentTree ? state.contentTree.treeSha : 'not loaded',
+    'File read mode': 'Git data API blob read',
+    'Manifest path': state.manifestPath || DEFAULT_MANIFEST_PATH,
+    'Manifest loaded': state.manifest ? 'yes' : 'no',
+    'Config path': CONFIG_PATH,
+    'Config loaded': gitcmsConfigLoaded ? (gitcmsConfig ? 'yes' : 'not found') : 'not loaded',
+    'Validation warnings': String(validationCount()),
+    'Media folder': mediaDir() || 'not set',
+    'Media URL prefix': mediaPrefix() || 'not set',
+    'Preview CSS': previewCssList().length ? previewCssList().join(', ') : 'none',
+    'Preview mode': state.previewMode,
+    'Fragments loaded': String(state.frags.size),
+    'Files loaded': String(state.files.size),
+    'Unsaved fragments': String(dirty.length),
+    'Active fragment': active ? `#${active.id} — ${active.label}` : 'none',
+    'Active file': active ? active.path : 'none',
+    'Content repository URL': repoUrl || 'not connected',
+    'Content branch URL': contentUrl || 'not connected',
+    'Live site URL': pagesFallback || 'not connected',
+    'Admin origin': location.origin === 'null' ? 'local file' : location.origin
   };
 }
 
-function shortSha(sha){
-  return sha && sha !== 'none' && sha !== 'not loaded' ? `${sha.slice(0,7)}…${sha.slice(-7)}` : sha;
+function shortSha(sha) {
+  return sha && sha !== 'none' && sha !== 'not loaded'
+    ? `${sha.slice(0, 7)}…${sha.slice(-7)}`
+    : sha;
 }
 
-function refShaForDiagnostics(ref){
+function refShaForDiagnostics(ref) {
   return ref && ref.object && ref.object.sha ? ref.object.sha : '';
 }
 
-async function diagnosticsCacheData(){
-  const cachedDefault=LastWriteCommitCache.get(state.defaultBranch) || '';
-  const cachedContent=LastWriteCommitCache.get(state.workBranch) || '';
-  const loaded=state.contentTree || null;
+async function diagnosticsCacheData() {
+  const cachedDefault = LastWriteCommitCache.get(state.defaultBranch) || '';
+  const cachedContent = LastWriteCommitCache.get(state.workBranch) || '';
+  const loaded = state.contentTree || null;
 
-  const data={
-    "Cache status": "not connected",
-    "Default branch ref SHA": "not loaded",
-    "Content branch ref SHA": "not loaded",
-    "Cached default branch SHA": cachedDefault || "none",
-    "Cached content branch SHA": cachedContent || "none",
-    "Loaded content commit SHA": loaded ? loaded.commitSha : "not loaded",
-    "Loaded content source": loaded ? (loaded.source || "unknown") : "not loaded",
-    "Loaded content tree SHA": loaded ? loaded.treeSha : "not loaded",
-    "Cache validation": "not run",
-    "Cache decision": "not loaded"
+  const data = {
+    'Cache status': 'not connected',
+    'Default branch ref SHA': 'not loaded',
+    'Content branch ref SHA': 'not loaded',
+    'Cached default branch SHA': cachedDefault || 'none',
+    'Cached content branch SHA': cachedContent || 'none',
+    'Loaded content commit SHA': loaded ? loaded.commitSha : 'not loaded',
+    'Loaded content source': loaded ? loaded.source || 'unknown' : 'not loaded',
+    'Loaded content tree SHA': loaded ? loaded.treeSha : 'not loaded',
+    'Cache validation': 'not run',
+    'Cache decision': 'not loaded'
   };
 
-  if(!state.owner || !state.repo || !state.token){
-    data["Cache decision"]="connect to a repository first";
+  if (!state.owner || !state.repo || !state.token) {
+    data['Cache decision'] = 'connect to a repository first';
     return data;
   }
 
-  try{
-    const [defaultRef,contentRef]=await Promise.all([
+  try {
+    const [defaultRef, contentRef] = await Promise.all([
       GitHubApi.getRef(state.defaultBranch),
       GitHubApi.getRef(state.workBranch)
     ]);
 
-    const defaultSha=refShaForDiagnostics(defaultRef);
-    const contentSha=refShaForDiagnostics(contentRef);
+    const defaultSha = refShaForDiagnostics(defaultRef);
+    const contentSha = refShaForDiagnostics(contentRef);
 
-    data["Default branch ref SHA"]=defaultSha || "unavailable";
-    data["Content branch ref SHA"]=contentSha || "unavailable";
+    data['Default branch ref SHA'] = defaultSha || 'unavailable';
+    data['Content branch ref SHA'] = contentSha || 'unavailable';
 
-    if(loaded && loaded.commitSha===contentSha){
-      data["Cache status"]="ok — loaded content matches branch ref";
-      data["Cache decision"]="branch ref";
-    }else if(loaded && cachedContent && loaded.commitSha===cachedContent){
-      data["Cache status"]="ok — loaded from validated cached write";
-      data["Cache decision"]="cached write";
-    }else if(loaded && contentSha && loaded.commitSha!==contentSha){
-      data["Cache status"]="warning — loaded content differs from branch ref";
-      data["Cache decision"]="loaded SHA does not match current refs/heads/content";
-    }else{
-      data["Cache status"]="ok — no loaded content mismatch detected";
-      data["Cache decision"]="branch ref";
+    if (loaded && loaded.commitSha === contentSha) {
+      data['Cache status'] = 'ok — loaded content matches branch ref';
+      data['Cache decision'] = 'branch ref';
+    } else if (loaded && cachedContent && loaded.commitSha === cachedContent) {
+      data['Cache status'] = 'ok — loaded from validated cached write';
+      data['Cache decision'] = 'cached write';
+    } else if (loaded && contentSha && loaded.commitSha !== contentSha) {
+      data['Cache status'] = 'warning — loaded content differs from branch ref';
+      data['Cache decision'] = 'loaded SHA does not match current refs/heads/content';
+    } else {
+      data['Cache status'] = 'ok — no loaded content mismatch detected';
+      data['Cache decision'] = 'branch ref';
     }
 
-    if(cachedContent && contentSha && cachedContent!==contentSha){
-      try{
-        const cmp=await GitHubApi.compare(contentSha,cachedContent);
-        const ahead=typeof cmp.ahead_by==='number' ? cmp.ahead_by : 'unknown';
-        const behind=typeof cmp.behind_by==='number' ? cmp.behind_by : 'unknown';
-        data["Cache validation"]=`cached vs branch: ahead ${ahead}, behind ${behind}`;
-        if(ahead===0){
-          data["Cache status"]="warning — cached content SHA differs but is not ahead";
+    if (cachedContent && contentSha && cachedContent !== contentSha) {
+      try {
+        const cmp = await GitHubApi.compare(contentSha, cachedContent);
+        const ahead = typeof cmp.ahead_by === 'number' ? cmp.ahead_by : 'unknown';
+        const behind = typeof cmp.behind_by === 'number' ? cmp.behind_by : 'unknown';
+        data['Cache validation'] = `cached vs branch: ahead ${ahead}, behind ${behind}`;
+        if (ahead === 0) {
+          data['Cache status'] = 'warning — cached content SHA differs but is not ahead';
         }
-      }catch(e){
-        data["Cache validation"]=`compare failed: ${e.message||e}`;
-        data["Cache status"]="warning — cache validation failed";
+      } catch (e) {
+        data['Cache validation'] = `compare failed: ${e.message || e}`;
+        data['Cache status'] = 'warning — cache validation failed';
       }
-    }else if(cachedContent && contentSha && cachedContent===contentSha){
-      data["Cache validation"]="cached content SHA equals branch ref";
-    }else if(!cachedContent){
-      data["Cache validation"]="no cached content SHA";
+    } else if (cachedContent && contentSha && cachedContent === contentSha) {
+      data['Cache validation'] = 'cached content SHA equals branch ref';
+    } else if (!cachedContent) {
+      data['Cache validation'] = 'no cached content SHA';
     }
 
     // Compact helper values make screenshots easier to read while full values
     // remain available above and in Copy diagnostics.
-    data["Default branch short SHA"]=shortSha(defaultSha || "none");
-    data["Content branch short SHA"]=shortSha(contentSha || "none");
-    data["Cached content short SHA"]=shortSha(cachedContent || "none");
-    data["Loaded content short SHA"]=shortSha(loaded ? loaded.commitSha : "not loaded");
+    data['Default branch short SHA'] = shortSha(defaultSha || 'none');
+    data['Content branch short SHA'] = shortSha(contentSha || 'none');
+    data['Cached content short SHA'] = shortSha(cachedContent || 'none');
+    data['Loaded content short SHA'] = shortSha(loaded ? loaded.commitSha : 'not loaded');
 
     return data;
-  }catch(e){
-    data["Cache status"]="warning — branch ref fetch failed";
-    data["Cache validation"]=e.message || String(e);
-    data["Cache decision"]="could not verify branch refs";
+  } catch (e) {
+    data['Cache status'] = 'warning — branch ref fetch failed';
+    data['Cache validation'] = e.message || String(e);
+    data['Cache decision'] = 'could not verify branch refs';
     return data;
   }
 }
 
-function appendDiagnosticsSection(grid,title){
-  const heading=document.createElement('div');
-  heading.className='diag-section';
-  heading.textContent=title;
+function appendDiagnosticsSection(grid, title) {
+  const heading = document.createElement('div');
+  heading.className = 'diag-section';
+  heading.textContent = title;
   grid.appendChild(heading);
 }
 
-function diagnosticsCompareUrl(){
-  if(!state.owner || !state.repo) return '';
+function diagnosticsCompareUrl() {
+  if (!state.owner || !state.repo) return '';
   return `https://github.com/${encodeURIComponent(state.owner)}/${encodeURIComponent(state.repo)}/compare/${encodeURIComponent(state.defaultBranch)}...${encodeURIComponent(state.workBranch)}`;
 }
 
-function diagnosticsRefUrl(branch){
-  if(!state.owner || !state.repo || !branch) return '';
+function diagnosticsRefUrl(branch) {
+  if (!state.owner || !state.repo || !branch) return '';
   return `https://github.com/${encodeURIComponent(state.owner)}/${encodeURIComponent(state.repo)}/tree/${encodeURIComponent(branch)}`;
 }
 
-function diagnosticsLinksHtml(){
-  const links=[
-    {label:'Open content branch',url:diagnosticsRefUrl(state.workBranch)},
-    {label:'Open main branch',url:diagnosticsRefUrl(state.defaultBranch)},
-    {label:'Open compare main…content',url:diagnosticsCompareUrl()}
-  ].filter(x=>x.url);
+function diagnosticsLinksHtml() {
+  const links = [
+    { label: 'Open content branch', url: diagnosticsRefUrl(state.workBranch) },
+    { label: 'Open main branch', url: diagnosticsRefUrl(state.defaultBranch) },
+    { label: 'Open compare main…content', url: diagnosticsCompareUrl() }
+  ].filter((x) => x.url);
 
-  return links.map(link=>
-    `<a class="diag-link" href="${escAttr(link.url)}" target="_blank" rel="noopener">${esc(link.label)} ↗</a>`
-  ).join('');
+  return links
+    .map(
+      (link) =>
+        `<a class="diag-link" href="${escAttr(link.url)}" target="_blank" rel="noopener">${esc(link.label)} ↗</a>`
+    )
+    .join('');
 }
 
-async function copyDiagnosticValue(value,label='value'){
-  const ok=await copyTextToClipboard(value);
-  if(ok) toast(`${label} copied`,'ok');
-  else toast('Copy failed','err');
+async function copyDiagnosticValue(value, label = 'value') {
+  const ok = await copyTextToClipboard(value);
+  if (ok) toast(`${label} copied`, 'ok');
+  else toast('Copy failed', 'err');
 }
 
-function appendDiagnosticsRows(grid,data){
-  for(const row of DiagnosticsUtils.diagnosticsRows(data)){
-    const k=document.createElement('div');
-    k.className='diag-key';
-    k.textContent=row.key;
+function appendDiagnosticsRows(grid, data) {
+  for (const row of DiagnosticsUtils.diagnosticsRows(data)) {
+    const k = document.createElement('div');
+    k.className = 'diag-key';
+    k.textContent = row.key;
 
-    const v=document.createElement('div');
-    v.className='diag-val '+row.statusClass;
-    v.title=row.value;
+    const v = document.createElement('div');
+    v.className = 'diag-val ' + row.statusClass;
+    v.title = row.value;
 
-    const rowWrap=document.createElement('div');
-    rowWrap.className='diag-row';
+    const rowWrap = document.createElement('div');
+    rowWrap.className = 'diag-row';
 
-    const valueText=document.createElement('span');
-    valueText.className='diag-value-text';
-    valueText.textContent=row.value;
+    const valueText = document.createElement('span');
+    valueText.className = 'diag-value-text';
+    valueText.textContent = row.value;
     rowWrap.appendChild(valueText);
 
-    if(row.badge){
-      const badge=document.createElement('span');
-      badge.className='diag-badge '+row.statusClass;
-      badge.textContent=row.badge;
+    if (row.badge) {
+      const badge = document.createElement('span');
+      badge.className = 'diag-badge ' + row.statusClass;
+      badge.textContent = row.badge;
       rowWrap.appendChild(badge);
     }
 
-    if(row.isSha){
-      const copyBtn=document.createElement('button');
-      copyBtn.type='button';
-      copyBtn.className='diag-copy';
-      copyBtn.textContent='copy';
-      copyBtn.title='Copy full SHA';
-      copyBtn.onclick=()=>copyDiagnosticValue(row.value,row.key);
+    if (row.isSha) {
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'diag-copy';
+      copyBtn.textContent = 'copy';
+      copyBtn.title = 'Copy full SHA';
+      copyBtn.onclick = () => copyDiagnosticValue(row.value, row.key);
       rowWrap.appendChild(copyBtn);
     }
 
@@ -3936,319 +4242,356 @@ function appendDiagnosticsRows(grid,data){
   }
 }
 
-function diagnosticsSummaryData(runtime,cache,admin){
+function diagnosticsSummaryData(runtime, cache, admin) {
   return {
-    "Admin version": admin["Current admin version"],
-    "Admin source repo": admin["Admin source repo"],
-    "Content repo": admin["Content/site repo"],
-    "Content branch": runtime["Content branch"],
-    "Main branch": runtime["Default branch"],
-    "Cache status": cache["Cache status"],
-    "Loaded content source": cache["Loaded content source"],
-    "Unsaved fragments": runtime["Unsaved fragments"],
-    "Validation warnings": runtime["Validation warnings"]
+    'Admin version': admin['Current admin version'],
+    'Admin source repo': admin['Admin source repo'],
+    'Content repo': admin['Content/site repo'],
+    'Content branch': runtime['Content branch'],
+    'Main branch': runtime['Default branch'],
+    'Cache status': cache['Cache status'],
+    'Loaded content source': cache['Loaded content source'],
+    'Unsaved fragments': runtime['Unsaved fragments'],
+    'Validation warnings': runtime['Validation warnings']
   };
 }
 
-function appendDiagnosticsAdvanced(grid,sections){
-  const details=document.createElement('details');
-  details.className='diag-advanced';
+function appendDiagnosticsAdvanced(grid, sections) {
+  const details = document.createElement('details');
+  details.className = 'diag-advanced';
 
-  const summary=document.createElement('summary');
-  summary.textContent='Advanced diagnostics';
+  const summary = document.createElement('summary');
+  summary.textContent = 'Advanced diagnostics';
   details.appendChild(summary);
 
-  const inner=document.createElement('div');
-  inner.className='diag-grid diag-grid-nested';
+  const inner = document.createElement('div');
+  inner.className = 'diag-grid diag-grid-nested';
 
-  for(const section of sections){
-    appendDiagnosticsSection(inner,section.title);
-    appendDiagnosticsRows(inner,section.data);
+  for (const section of sections) {
+    appendDiagnosticsSection(inner, section.title);
+    appendDiagnosticsRows(inner, section.data);
   }
 
   details.appendChild(inner);
   grid.appendChild(details);
 }
 
-async function renderDiagnostics(){
-  const grid=el('diagnosticsGrid');
-  grid.innerHTML='';
+async function renderDiagnostics() {
+  const grid = el('diagnosticsGrid');
+  grid.innerHTML = '';
 
-  try{
-    const admin=diagnosticsAdminData();
-    const runtime=diagnosticsData();
+  try {
+    const admin = diagnosticsAdminData();
+    const runtime = diagnosticsData();
 
-    appendDiagnosticsSection(grid,'Summary');
-    appendDiagnosticsRows(grid,{
-      "Admin version": admin["Current admin version"],
-      "Content repo": admin["Content/site repo"],
-      "Content branch": runtime["Content branch"],
-      "Main branch": runtime["Default branch"],
-      "Cache status": "loading…",
-      "Unsaved fragments": runtime["Unsaved fragments"],
-      "Validation warnings": runtime["Validation warnings"]
+    appendDiagnosticsSection(grid, 'Summary');
+    appendDiagnosticsRows(grid, {
+      'Admin version': admin['Current admin version'],
+      'Content repo': admin['Content/site repo'],
+      'Content branch': runtime['Content branch'],
+      'Main branch': runtime['Default branch'],
+      'Cache status': 'loading…',
+      'Unsaved fragments': runtime['Unsaved fragments'],
+      'Validation warnings': runtime['Validation warnings']
     });
 
-    const cache=await diagnosticsCacheData();
-    lastDiagnosticsCacheData=cache;
+    const cache = await diagnosticsCacheData();
+    lastDiagnosticsCacheData = cache;
 
-    grid.innerHTML='';
-    appendDiagnosticsSection(grid,'Summary');
-    appendDiagnosticsRows(grid,diagnosticsSummaryData(runtime,cache,admin));
+    grid.innerHTML = '';
+    appendDiagnosticsSection(grid, 'Summary');
+    appendDiagnosticsRows(grid, diagnosticsSummaryData(runtime, cache, admin));
 
-    appendDiagnosticsAdvanced(grid,[
-      {title:'Admin / version',data:admin},
-      {title:'Runtime',data:runtime},
-      {title:'Cache / content source',data:cache}
+    appendDiagnosticsAdvanced(grid, [
+      { title: 'Admin / version', data: admin },
+      { title: 'Runtime', data: runtime },
+      { title: 'Cache / content source', data: cache }
     ]);
 
-    const note=DiagnosticsUtils.diagnosticsWorkflowNote({
-      workBranch:state.workBranch,
-      defaultBranch:state.defaultBranch,
-      mediaDir:mediaDir(),
-      mediaPrefix:mediaPrefix()
+    const note = DiagnosticsUtils.diagnosticsWorkflowNote({
+      workBranch: state.workBranch,
+      defaultBranch: state.defaultBranch,
+      mediaDir: mediaDir(),
+      mediaPrefix: mediaPrefix()
     });
     el('diagnosticsNote').innerHTML =
-      `<div class="diag-links">${diagnosticsLinksHtml()}</div>`+
-      `Expected workflow: <span class="mono">${esc(note.workBranch)}</span> is the CMS editing branch, `+
-      `<span class="mono">${esc(note.defaultBranch)}</span> is the live publish branch. `+
-      `Media should usually be saved under <span class="mono">${esc(note.mediaDir)}</span> and inserted as `+
+      `<div class="diag-links">${diagnosticsLinksHtml()}</div>` +
+      `Expected workflow: <span class="mono">${esc(note.workBranch)}</span> is the CMS editing branch, ` +
+      `<span class="mono">${esc(note.defaultBranch)}</span> is the live publish branch. ` +
+      `Media should usually be saved under <span class="mono">${esc(note.mediaDir)}</span> and inserted as ` +
       `<span class="mono">${esc(note.mediaPrefix)}</span>.`;
 
     renderValidationBox();
 
     el('diagnosticsErr').classList.remove('show');
-    el('diagnosticsErr').textContent='';
-  }catch(e){
-    console.error('Diagnostics failed',e);
-    grid.innerHTML='';
-    el('diagnosticsErr').textContent='Diagnostics failed: '+(e.message||e);
+    el('diagnosticsErr').textContent = '';
+  } catch (e) {
+    console.error('Diagnostics failed', e);
+    grid.innerHTML = '';
+    el('diagnosticsErr').textContent = 'Diagnostics failed: ' + (e.message || e);
     el('diagnosticsErr').classList.add('show');
   }
 }
 
-async function clearDiagnosticsCache(){
-  const btn=el('diagnosticsClearCache');
-  if(btn){
-    btn.disabled=true;
-    btn.textContent='Clearing…';
+async function clearDiagnosticsCache() {
+  const btn = el('diagnosticsClearCache');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Clearing…';
   }
 
-  try{
+  try {
     LastWriteCommitCache.clearRepo();
     Store.clearContentTree();
 
-    if(state.owner && state.repo && state.workBranch){
-      await GitHubApi.getBranchTreeSnapshot(state.workBranch,{
-        force:true,
-        preferLastWrite:false
+    if (state.owner && state.repo && state.workBranch) {
+      await GitHubApi.getBranchTreeSnapshot(state.workBranch, {
+        force: true,
+        preferLastWrite: false
       });
     }
 
     await renderDiagnostics();
-    toast('Local GitCMS cache cleared','ok');
-  }catch(e){
-    console.error('Clear diagnostics cache failed',e);
-    const box=el('diagnosticsErr');
-    box.textContent='Clear cache failed: '+(e.message||e);
+    toast('Local GitCMS cache cleared', 'ok');
+  } catch (e) {
+    console.error('Clear diagnostics cache failed', e);
+    const box = el('diagnosticsErr');
+    box.textContent = 'Clear cache failed: ' + (e.message || e);
     box.classList.add('show');
-    toast('Clear cache failed','err');
-  }finally{
-    if(btn){
-      btn.disabled=false;
-      btn.textContent='Clear local cache';
+    toast('Clear cache failed', 'err');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Clear local cache';
     }
   }
 }
 
-function openDiagnostics(){
+function openDiagnostics() {
   el('diagnosticsModal').classList.add('show');
   renderDiagnostics();
 }
 
-async function diagnosticsText(){
+async function diagnosticsText() {
   // Copy remains full-detail even though the visible UI is simple by default.
-  try{
-    const runtime=diagnosticsData();
-    const cache=await diagnosticsCacheData();
-    lastDiagnosticsCacheData=cache;
-    return DiagnosticsUtils.diagnosticsTextSections([
-      {title:'Admin / version',data:diagnosticsAdminData()},
-      {title:'Runtime',data:runtime},
-      {title:'Cache / content source',data:cache}
-    ],allValidationWarnings());
-  }catch(e){
-    return 'Diagnostics failed: '+(e.message||e);
+  try {
+    const runtime = diagnosticsData();
+    const cache = await diagnosticsCacheData();
+    lastDiagnosticsCacheData = cache;
+    return DiagnosticsUtils.diagnosticsTextSections(
+      [
+        { title: 'Admin / version', data: diagnosticsAdminData() },
+        { title: 'Runtime', data: runtime },
+        { title: 'Cache / content source', data: cache }
+      ],
+      allValidationWarnings()
+    );
+  } catch (e) {
+    return 'Diagnostics failed: ' + (e.message || e);
   }
 }
 
-async function copyDiagnostics(){
-  const text=await diagnosticsText();
-  try{
+async function copyDiagnostics() {
+  const text = await diagnosticsText();
+  try {
     await navigator.clipboard.writeText(text);
-    toast('Diagnostics copied','ok');
-  }catch(e){
+    toast('Diagnostics copied', 'ok');
+  } catch (e) {
     // Clipboard can fail from file://. Fallback to a temporary textarea.
-    const ta=document.createElement('textarea');
-    ta.value=text;
-    ta.style.position='fixed';
-    ta.style.left='-9999px';
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
-    try{
+    try {
       document.execCommand('copy');
-      toast('Diagnostics copied','ok');
-    }catch(err){
-      const box=el('diagnosticsErr');
-      box.textContent='Copy failed. Select and copy manually from the browser console if needed.';
+      toast('Diagnostics copied', 'ok');
+    } catch (err) {
+      const box = el('diagnosticsErr');
+      box.textContent = 'Copy failed. Select and copy manually from the browser console if needed.';
       box.classList.add('show');
-    }finally{
+    } finally {
       ta.remove();
     }
   }
 }
 
 /* ---------- external links ---------- */
-function repoUrlForBranch(){
-  if(!state.owner || !state.repo) return '';
+function repoUrlForBranch() {
+  if (!state.owner || !state.repo) return '';
   return `https://github.com/${encodeURIComponent(state.owner)}/${encodeURIComponent(state.repo)}/tree/${encodeURIComponent(state.workBranch)}`;
 }
 
-function fallbackPagesUrl(){
-  if(!state.owner || !state.repo) return '';
+function fallbackPagesUrl() {
+  if (!state.owner || !state.repo) return '';
   // User/organization Pages repo: owner.github.io
-  if(state.repo.toLowerCase() === `${state.owner.toLowerCase()}.github.io`){
+  if (state.repo.toLowerCase() === `${state.owner.toLowerCase()}.github.io`) {
     return `https://${state.owner}.github.io/`;
   }
   // Project Pages repo
   return `https://${state.owner}.github.io/${state.repo}/`;
 }
 
-async function liveSiteUrl(){
+async function liveSiteUrl() {
   // Prefer GitHub Pages API because custom domains and non-standard Pages settings
   // can exist. If it fails, fall back to the standard project Pages URL.
-  try{
-    const pages=await GitHubApi.getPagesInfo();
-    if(pages && pages.html_url) return pages.html_url.replace(/\/?$/,'/');
-  }catch(e){
+  try {
+    const pages = await GitHubApi.getPagesInfo();
+    if (pages && pages.html_url) return pages.html_url.replace(/\/?$/, '/');
+  } catch (e) {
     // 404/403 means Pages endpoint is unavailable or token lacks permission.
   }
   return fallbackPagesUrl();
 }
 
-function openContentBranch(){
-  const url=repoUrlForBranch();
-  if(!url){ toast('Connect to a repo first','err'); return; }
-  window.open(url,'_blank','noopener,noreferrer');
+function openContentBranch() {
+  const url = repoUrlForBranch();
+  if (!url) {
+    toast('Connect to a repo first', 'err');
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-async function openLiveSite(){
-  if(!state.owner || !state.repo){ toast('Connect to a repo first','err'); return; }
-  const btn=el('openLiveBtn');
-  const old=btn.innerHTML;
-  btn.disabled=true;
-  btn.textContent='Opening…';
-  try{
-    window.open(await liveSiteUrl(),'_blank','noopener,noreferrer');
-  }catch(e){
-    window.open(fallbackPagesUrl(),'_blank','noopener,noreferrer');
-  }finally{
-    btn.disabled=false;
-    btn.innerHTML=old;
+async function openLiveSite() {
+  if (!state.owner || !state.repo) {
+    toast('Connect to a repo first', 'err');
+    return;
+  }
+  const btn = el('openLiveBtn');
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = 'Opening…';
+  try {
+    window.open(await liveSiteUrl(), '_blank', 'noopener,noreferrer');
+  } catch (e) {
+    window.open(fallbackPagesUrl(), '_blank', 'noopener,noreferrer');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = old;
   }
 }
 
 /* ---------- misc controls ---------- */
 
+el('diagnosticsBtn').onclick = openDiagnostics;
+el('diagnosticsClose').onclick = () => el('diagnosticsModal').classList.remove('show');
+el('diagnosticsCloseTop').onclick = () => el('diagnosticsModal').classList.remove('show');
+el('diagnosticsRefresh').onclick = () => renderDiagnostics();
+el('diagnosticsCopy').onclick = () => copyDiagnostics();
+el('diagnosticsClearCache').onclick = () => clearDiagnosticsCache();
 
-el('diagnosticsBtn').onclick=openDiagnostics;
-el('diagnosticsClose').onclick=()=>el('diagnosticsModal').classList.remove('show');
-el('diagnosticsCloseTop').onclick=()=>el('diagnosticsModal').classList.remove('show');
-el('diagnosticsRefresh').onclick=()=>renderDiagnostics();
-el('diagnosticsCopy').onclick=()=>copyDiagnostics();
-el('diagnosticsClearCache').onclick=()=>clearDiagnosticsCache();
+el('openContentBtn').onclick = openContentBranch;
+el('openLiveBtn').onclick = openLiveSite;
 
-el('openContentBtn').onclick=openContentBranch;
-el('openLiveBtn').onclick=openLiveSite;
+el('refreshBtn').onclick = () => loadAll();
+el('sideRefresh').onclick = () => loadAll();
 
-el('refreshBtn').onclick=()=>loadAll();
-el('sideRefresh').onclick=()=>loadAll();
-
-el('resetDraftBtn').onclick=async()=>{
-  const anyDirty=Store.dirtyFragments().length>0;
-  const warn=anyDirty
-    ? 'You have unsaved edits that will be discarded. '
-    : '';
-  if(!confirm(warn+`Reset ${state.workBranch} to match ${state.defaultBranch}? `+
-     `Any unpublished commits on ${state.workBranch} will be lost.`)) return;
-  const btn=el('resetDraftBtn'); btn.disabled=true; btn.textContent='Resetting…';
-  try{
-    const ref=await GitHubApi.getRef(state.defaultBranch);
-    const sha=ref.object.sha;
-    try{
-      await GitHubApi.updateRef(state.workBranch,sha,{force:true});
+el('resetDraftBtn').onclick = async () => {
+  const anyDirty = Store.dirtyFragments().length > 0;
+  const warn = anyDirty ? 'You have unsaved edits that will be discarded. ' : '';
+  if (
+    !confirm(
+      warn +
+        `Reset ${state.workBranch} to match ${state.defaultBranch}? ` +
+        `Any unpublished commits on ${state.workBranch} will be lost.`
+    )
+  )
+    return;
+  const btn = el('resetDraftBtn');
+  btn.disabled = true;
+  btn.textContent = 'Resetting…';
+  try {
+    const ref = await GitHubApi.getRef(state.defaultBranch);
+    const sha = ref.object.sha;
+    try {
+      await GitHubApi.updateRef(state.workBranch, sha, { force: true });
       Store.clearContentTree();
-    }catch(e){
-      if(e.status===404 || e.status===422){
-        await GitHubApi.createBranchFromSha(state.workBranch,sha);
+    } catch (e) {
+      if (e.status === 404 || e.status === 422) {
+        await GitHubApi.createBranchFromSha(state.workBranch, sha);
         Store.clearContentTree();
-      }else throw e;
+      } else throw e;
     }
     el('divergeBanner').classList.remove('show');
-    toast(`${state.workBranch} reset to ${state.defaultBranch}`,'ok');
+    toast(`${state.workBranch} reset to ${state.defaultBranch}`, 'ok');
     await loadAll();
-  }catch(e){
-    toast('Reset failed: '+e.message,'err');
-  }finally{
-    btn.disabled=false; btn.textContent=`Reset ${state.workBranch} from ${state.defaultBranch}`;
+  } catch (e) {
+    toast('Reset failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = `Reset ${state.workBranch} from ${state.defaultBranch}`;
   }
 };
-el('disconnectBtn').onclick=()=>{
-  localStorage.removeItem(LS_REPO); localStorage.removeItem(LS_TOKEN);
+el('disconnectBtn').onclick = () => {
+  localStorage.removeItem(LS_REPO);
+  localStorage.removeItem(LS_TOKEN);
   location.reload();
 };
-el('connectBtn').onclick=connect;
-[el('repoUrl'),el('token')].forEach(i=>i.addEventListener('keydown',e=>{if(e.key==='Enter')connect();}));
-el('commitMsg').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();doCommit();}});
-
-
-el('altCancel').onclick=closeAltDialog;
-el('altInsert').onclick=confirmAltInsert;
-el('altDecorative').addEventListener('change',()=>{
-  const checked=el('altDecorative').checked;
-  el('altTextInput').disabled=checked;
-  if(checked) el('altTextInput').value='';
-  else if(pendingMediaInsert) el('altTextInput').value=MediaUtils.altFromFilename(pendingMediaInsert.name);
-});
-el('altTextInput').addEventListener('keydown',e=>{
-  if(e.key==='Enter'){ e.preventDefault(); confirmAltInsert(); }
+el('connectBtn').onclick = connect;
+[el('repoUrl'), el('token')].forEach((i) =>
+  i.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') connect();
+  })
+);
+el('commitMsg').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    doCommit();
+  }
 });
 
+el('altCancel').onclick = closeAltDialog;
+el('altInsert').onclick = confirmAltInsert;
+el('altDecorative').addEventListener('change', () => {
+  const checked = el('altDecorative').checked;
+  el('altTextInput').disabled = checked;
+  if (checked) el('altTextInput').value = '';
+  else if (pendingMediaInsert)
+    el('altTextInput').value = MediaUtils.altFromFilename(pendingMediaInsert.name);
+});
+el('altTextInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    confirmAltInsert();
+  }
+});
 
-el('deleteMediaCancel').onclick=closeDeleteMediaDialog;
-el('deleteMediaConfirm').onclick=confirmDeleteMedia;
+el('deleteMediaCancel').onclick = closeDeleteMediaDialog;
+el('deleteMediaConfirm').onclick = confirmDeleteMedia;
 
 // close modals on backdrop click
-document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('mousedown',e=>{
-  if(e.target===m) m.classList.remove('show');
-}));
+document.querySelectorAll('.modal-bg').forEach((m) =>
+  m.addEventListener('mousedown', (e) => {
+    if (e.target === m) m.classList.remove('show');
+  })
+);
 
 // warn on unload if dirty
-window.addEventListener('beforeunload',e=>{
-  if(state.activeId) syncActiveFromTextarea();
-  if(Store.dirtyFragments().length){ e.preventDefault(); e.returnValue=''; }
+window.addEventListener('beforeunload', (e) => {
+  if (state.activeId) syncActiveFromTextarea();
+  if (Store.dirtyFragments().length) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
 });
 
 /* ---------- prefill ---------- */
-(function init(){
-  const r=localStorage.getItem(LS_REPO), t=localStorage.getItem(LS_TOKEN);
-  if(r) el('repoUrl').value=r;
-  if(t){ try{ el('token').value=dec(t); }catch(e){} }
+(function init() {
+  const r = localStorage.getItem(LS_REPO),
+    t = localStorage.getItem(LS_TOKEN);
+  if (r) el('repoUrl').value = r;
+  if (t) {
+    try {
+      el('token').value = dec(t);
+    } catch (e) {}
+  }
 })();
 
 // Render default editor snippets after all modules, including EditorUtils, are initialized.
 // Config-loaded refreshes still happen after connect/settings save.
-if(typeof renderEditorSnippetControls === 'function'){
+if (typeof renderEditorSnippetControls === 'function') {
   renderEditorSnippetControls();
 }

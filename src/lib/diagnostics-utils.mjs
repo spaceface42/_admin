@@ -7,9 +7,14 @@ export function diagnosticsStatusClass(key, value) {
   if (key === 'Cache status' && /ok|aligned|none/i.test(String(value))) return 'ok';
 
   if (
-    ['Repository', 'Default branch', 'Content branch', 'Media folder', 'Media URL prefix', 'Cache status'].includes(
-      key
-    ) &&
+    [
+      'Repository',
+      'Default branch',
+      'Content branch',
+      'Media folder',
+      'Media URL prefix',
+      'Cache status'
+    ].includes(key) &&
     value &&
     !/not|unknown/.test(String(value))
   ) {
@@ -33,7 +38,7 @@ export function diagnosticsText(data, warnings = []) {
   return (
     base +
     '\n\nValidation warnings:\n' +
-    warnings.map(warning => `- ${warning.kind}: ${warning.msg}`).join('\n')
+    warnings.map((warning) => `- ${warning.kind}: ${warning.msg}`).join('\n')
   );
 }
 
@@ -48,7 +53,7 @@ export function diagnosticsWorkflowNote({ workBranch, defaultBranch, mediaDir, m
 
 export function diagnosticsTextSections(sections = [], warnings = []) {
   const body = sections
-    .map(section => {
+    .map((section) => {
       const rows = Object.entries(section.data || {})
         .map(([key, value]) => `${key}: ${value}`)
         .join('\n');
@@ -61,7 +66,7 @@ export function diagnosticsTextSections(sections = [], warnings = []) {
   return (
     body +
     '\n\nValidation warnings:\n' +
-    warnings.map(warning => `- ${warning.kind}: ${warning.msg}`).join('\n')
+    warnings.map((warning) => `- ${warning.kind}: ${warning.msg}`).join('\n')
   );
 }
 

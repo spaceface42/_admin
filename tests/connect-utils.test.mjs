@@ -73,10 +73,7 @@ test('connectValidation validates repo and token', () => {
     connectValidation({ repoUrl: 'spaceface42/_blackhole', token: '' }),
     'A token is required.'
   );
-  assert.equal(
-    connectValidation({ repoUrl: 'spaceface42/_blackhole', token: 'abc' }),
-    ''
-  );
+  assert.equal(connectValidation({ repoUrl: 'spaceface42/_blackhole', token: 'abc' }), '');
 });
 
 test('repoSlug joins owner and repo safely', () => {

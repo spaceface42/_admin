@@ -26,7 +26,9 @@ const GitHubErrors = (() => {
     }
 
     if (status === 409) {
-      return conflict || `${action} failed: Git conflict. Refresh, check the branch, and try again.`;
+      return (
+        conflict || `${action} failed: Git conflict. Refresh, check the branch, and try again.`
+      );
     }
 
     if (status === 422) {

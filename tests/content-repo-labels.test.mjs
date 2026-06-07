@@ -6,7 +6,7 @@ test('login labels clearly refer to content/site repository', () => {
   const html = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8');
 
   assert.match(html, /Content \/ site repository URL/);
-  assert.match(html, /admin-hosting repo/);
+  assert.match(html, /admin-hosting\s+repo/);
   assert.match(html, /site-content-repo/);
 });
 

@@ -1,9 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  effectiveBaseSha,
-  refsOrPinnedBranchesAligned
-} from '../src/lib/publish-utils.mjs';
+import { effectiveBaseSha, refsOrPinnedBranchesAligned } from '../src/lib/publish-utils.mjs';
 
 test('effectiveBaseSha prefers pinned main SHA over stale main ref', () => {
   assert.equal(

@@ -1,9 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  effectiveHeadSha,
-  refsOrPinnedPointToSameSha
-} from '../src/lib/publish-utils.mjs';
+import { effectiveHeadSha, refsOrPinnedPointToSameSha } from '../src/lib/publish-utils.mjs';
 
 test('effectiveHeadSha prefers pinned SHA over stale branch ref', () => {
   assert.equal(

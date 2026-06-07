@@ -8,7 +8,9 @@ const ConnectUtils = (() => {
   }
 
   function parseRepoUrl(input) {
-    const raw = String(input || '').trim().replace(/\.git$/, '');
+    const raw = String(input || '')
+      .trim()
+      .replace(/\.git$/, '');
     if (!raw) return null;
 
     const githubMatch = raw.match(/github\.com[/:]([^/\s]+)\/([^/\s?#]+)/i);
@@ -27,7 +29,7 @@ const ConnectUtils = (() => {
   function branchLabel(name) {
     return String(name || '')
       .replace(/[-_]+/g, ' ')
-      .replace(/\b\w/g, char => char.toUpperCase());
+      .replace(/\b\w/g, (char) => char.toUpperCase());
   }
 
   function configStatePatch(config) {

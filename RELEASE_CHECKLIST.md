@@ -55,7 +55,6 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-
 ## Publish workflow check
 
 After Save → Content:
@@ -76,7 +75,6 @@ GitCMS should not perform:
 ```txt
 main → content
 ```
-
 
 ## Manual regression file
 

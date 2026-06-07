@@ -2,12 +2,12 @@
 const ConfigUtils = (() => {
   function parsePreviewCssInput(value) {
     if (Array.isArray(value)) {
-      return value.map(item => String(item).trim()).filter(Boolean);
+      return value.map((item) => String(item).trim()).filter(Boolean);
     }
 
     return String(value || '')
       .split(',')
-      .map(item => item.trim())
+      .map((item) => item.trim())
       .filter(Boolean);
   }
 
@@ -22,10 +22,10 @@ const ConfigUtils = (() => {
   }
 
   function shouldPersistWorkBranch(config, workBranch, defaultWorkBranch = 'content') {
-    return !!(
-      config &&
-      Object.prototype.hasOwnProperty.call(config, 'workBranch')
-    ) || workBranch !== defaultWorkBranch;
+    return (
+      !!(config && Object.prototype.hasOwnProperty.call(config, 'workBranch')) ||
+      workBranch !== defaultWorkBranch
+    );
   }
 
   function buildNextGitCMSConfig(existingConfig, settings) {

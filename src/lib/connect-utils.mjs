@@ -1,5 +1,7 @@
 export function parseRepoUrl(input) {
-  const raw = String(input || '').trim().replace(/\.git$/, '');
+  const raw = String(input || '')
+    .trim()
+    .replace(/\.git$/, '');
   if (!raw) return null;
 
   // Accept:
@@ -31,7 +33,7 @@ export function cleanRepoPart(value) {
 export function branchLabel(name) {
   return String(name || '')
     .replace(/[-_]+/g, ' ')
-    .replace(/\b\w/g, char => char.toUpperCase());
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export function configStatePatch(config) {

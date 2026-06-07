@@ -78,13 +78,11 @@ PUBLISH_WORKFLOW.md
 RELEASE_CHECKLIST.md
 ```
 
-
 ## Architecture
 
 ```txt
 ARCHITECTURE.md
 ```
-
 
 ## Admin repo vs content repo
 

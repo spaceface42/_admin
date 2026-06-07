@@ -1,9 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  canPublishCompare,
-  publishBlockedReason
-} from '../src/lib/publish-utils.mjs';
+import { canPublishCompare, publishBlockedReason } from '../src/lib/publish-utils.mjs';
 
 test('canPublishCompare blocks missing compare data', () => {
   assert.equal(canPublishCompare(null), false);

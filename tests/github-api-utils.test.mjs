@@ -15,7 +15,12 @@ import {
   updateRefPath
 } from '../src/lib/github-api-utils.mjs';
 
-const githubPath = path => String(path).replace(/^\/+|\/+$/g, '').split('/').map(encodeURIComponent).join('/');
+const githubPath = (path) =>
+  String(path)
+    .replace(/^\/+|\/+$/g, '')
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/');
 
 test('repoPath builds repository API root plus optional path', () => {
   assert.equal(
@@ -69,12 +74,16 @@ test('contentsPath supports optional ref', () => {
 test('git data and compare paths are encoded', () => {
   assert.equal(blobPath('abc/def'), '/git/blobs/abc%2Fdef');
   assert.equal(treePath('tree sha', { recursive: true }), '/git/trees/tree%20sha?recursive=1');
-  assert.equal(comparePath({ base: 'main', head: 'feature/test' }), '/compare/main...feature%2Ftest');
+  assert.equal(
+    comparePath({ base: 'main', head: 'feature/test' }),
+    '/compare/main...feature%2Ftest'
+  );
 });
 
 test('mergeBody preserves GitHub merge payload shape', () => {
-  assert.deepEqual(
-    mergeBody({ base: 'main', head: 'content', commit_message: 'publish' }),
-    { base: 'main', head: 'content', commit_message: 'publish' }
-  );
+  assert.deepEqual(mergeBody({ base: 'main', head: 'content', commit_message: 'publish' }), {
+    base: 'main',
+    head: 'content',
+    commit_message: 'publish'
+  });
 });

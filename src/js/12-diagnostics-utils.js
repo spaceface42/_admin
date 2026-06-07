@@ -5,13 +5,19 @@ const DiagnosticsUtils = (() => {
     if (key === 'Validation warnings' && value !== '0') return 'warn';
     if (key === 'Config loaded' && value === 'not found') return 'warn';
     if (key === 'Manifest loaded' && value === 'no') return 'warn';
-    if (key === 'Cache status' && /stale|differs|failed|warning/i.test(String(value))) return 'warn';
+    if (key === 'Cache status' && /stale|differs|failed|warning/i.test(String(value)))
+      return 'warn';
     if (key === 'Cache status' && /ok|aligned|none/i.test(String(value))) return 'ok';
 
     if (
-      ['Repository', 'Default branch', 'Content branch', 'Media folder', 'Media URL prefix', 'Cache status'].includes(
-        key
-      ) &&
+      [
+        'Repository',
+        'Default branch',
+        'Content branch',
+        'Media folder',
+        'Media URL prefix',
+        'Cache status'
+      ].includes(key) &&
       value &&
       !/not|unknown/.test(String(value))
     ) {
@@ -20,7 +26,6 @@ const DiagnosticsUtils = (() => {
 
     return '';
   }
-
 
   function diagnosticsBadgeText(statusClass) {
     if (statusClass === 'ok') return 'OK';
@@ -54,14 +59,13 @@ const DiagnosticsUtils = (() => {
     return (
       base +
       '\n\nValidation warnings:\n' +
-      warnings.map(warning => `- ${warning.kind}: ${warning.msg}`).join('\n')
+      warnings.map((warning) => `- ${warning.kind}: ${warning.msg}`).join('\n')
     );
   }
 
-
   function diagnosticsTextSections(sections = [], warnings = []) {
     const body = sections
-      .map(section => {
+      .map((section) => {
         const rows = Object.entries(section.data || {})
           .map(([key, value]) => `${key}: ${value}`)
           .join('\n');
@@ -74,7 +78,7 @@ const DiagnosticsUtils = (() => {
     return (
       body +
       '\n\nValidation warnings:\n' +
-      warnings.map(warning => `- ${warning.kind}: ${warning.msg}`).join('\n')
+      warnings.map((warning) => `- ${warning.kind}: ${warning.msg}`).join('\n')
     );
   }
 
@@ -86,7 +90,6 @@ const DiagnosticsUtils = (() => {
       mediaPrefix: mediaPrefix || 'not set'
     };
   }
-
 
   function inferGitHubPagesAdminRepo({ hostname = '', pathname = '' } = {}) {
     const host = String(hostname || '').toLowerCase();

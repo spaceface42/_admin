@@ -72,7 +72,14 @@ test('publishConflictInfo returns null for non-conflicts', () => {
   assert.equal(
     publishConflictInfo(
       { status: 403 },
-      { owner: 'a', repo: 'b', base: 'main', head: 'content', workBranch: 'content', defaultBranch: 'main' }
+      {
+        owner: 'a',
+        repo: 'b',
+        base: 'main',
+        head: 'content',
+        workBranch: 'content',
+        defaultBranch: 'main'
+      }
     ),
     null
   );
