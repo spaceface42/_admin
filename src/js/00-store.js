@@ -43,38 +43,29 @@ const Store = Object.freeze({
     state.frags.set(fragment.id, fragment);
   },
   manifestLabelForFragment(fragment) {
-    if (!fragment) return '';
-    const entry = state.manifest && state.manifest.find((e) => e.id === fragment.id);
-    return entry && entry.label ? entry.label : fragment.id;
+    return DirtyState.manifestLabelForFragment(state.manifest, fragment);
   },
   isFragmentDirty(fragment) {
-    if (!fragment) return false;
-    return (
-      String(fragment.innerHTML || '') !== String(fragment.origHTML || '') ||
-      String(fragment.label || fragment.id) !== String(this.manifestLabelForFragment(fragment))
-    );
+    return DirtyState.isFragmentDirty(fragment, state.manifest);
   },
   applyEditorValues(id, { html, label } = {}) {
     const fragment = state.frags.get(id);
     if (!fragment) return null;
-    if (html !== undefined) fragment.innerHTML = html;
-    if (label !== undefined) fragment.label = String(label).trim() || fragment.id;
-    fragment.dirty = this.isFragmentDirty(fragment);
+    const next = DirtyState.applyEditorValues(fragment, { html, label }, state.manifest);
+    Object.assign(fragment, next);
     return fragment;
   },
   markFragmentClean(id) {
     const fragment = state.frags.get(id);
     if (!fragment) return null;
-    fragment.origHTML = fragment.innerHTML;
-    fragment.dirty = false;
+    Object.assign(fragment, DirtyState.markCleanAfterSave(fragment));
     return fragment;
   },
   dirtyFragments() {
-    return [...state.frags.values()].filter((f) => f.dirty);
+    return DirtyState.dirtyFragments(state.frags.values());
   },
   dirtyFragmentIdsForFile(fileRec) {
-    if (!fileRec || !Array.isArray(fileRec.fragments)) return [];
-    return fileRec.fragments.filter((id) => state.frags.get(id)?.dirty);
+    return DirtyState.dirtyFragmentIdsForFile(fileRec, state.frags);
   },
   clearValidationBucket(kind) {
     if (state.validation && state.validation[kind]) state.validation[kind] = [];

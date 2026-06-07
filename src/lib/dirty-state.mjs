@@ -17,11 +17,9 @@ export function isFragmentDirty(fragment, manifest) {
 
 export function applyEditorValues(fragment, { html, label }, manifest) {
   if (!fragment) return null;
-  const next = {
-    ...fragment,
-    innerHTML: html,
-    label: String(label || fragment.id || '').trim() || fragment.id
-  };
+  const next = { ...fragment };
+  if (html !== undefined) next.innerHTML = html;
+  if (label !== undefined) next.label = String(label || fragment.id || '').trim() || fragment.id;
   next.dirty = isFragmentDirty(next, manifest);
   return next;
 }

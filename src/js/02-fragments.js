@@ -265,10 +265,3 @@ function parseFileFragments(fileRec) {
   return ids;
 }
 
-const FragmentParser = Object.freeze({
-  findMarkedFragments,
-  extractMarkedFragment,
-  rebuildFragment,
-  rebuildMarkedFragmentFromParts,
-  parseFileFragments
-});

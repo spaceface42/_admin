@@ -36,7 +36,7 @@ async function connect() {
 
     // persist creds
     localStorage.setItem(LS_REPO, url.trim());
-    localStorage.setItem(LS_TOKEN, enc(tok));
+    TokenStorage.write(enc(tok));
 
     el('login').style.display = 'none';
     el('app').style.display = 'flex';
@@ -303,7 +303,7 @@ async function tryTreeScan() {
 
   const recs = await Promise.all(
     paths.map((p) =>
-      fetchFile(p, sourceRef).catch((e) => {
+      fetchFile(p, snapshot.commitSha || state.workBranch).catch((e) => {
         console.warn('scan skip', p, e);
         return null;
       })

@@ -51,7 +51,7 @@ el('resetDraftBtn').onclick = async () => {
 };
 el('disconnectBtn').onclick = () => {
   localStorage.removeItem(LS_REPO);
-  localStorage.removeItem(LS_TOKEN);
+  TokenStorage.clear();
   location.reload();
 };
 el('connectBtn').onclick = connect;

@@ -1,7 +1,7 @@
 /* ---------- prefill ---------- */
 (function init() {
   const r = localStorage.getItem(LS_REPO),
-    t = localStorage.getItem(LS_TOKEN);
+    t = TokenStorage.read();
   if (r) el('repoUrl').value = r;
   if (t) {
     try {

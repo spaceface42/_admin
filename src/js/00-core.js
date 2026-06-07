@@ -20,12 +20,12 @@
 const LS_REPO = 'gitcms_repo',
   LS_TOKEN = 'gitcms_tok',
   LS_LAST_WRITE = 'gitcms_last_write_commits';
-// TODO SECURITY:
-// During development, the GitHub token is stored in localStorage for convenience.
-// Before production/public use, replace this with sessionStorage, OAuth/device flow,
-// or another safer auth model. Base64 is obfuscation only, not encryption.
+// Token storage:
+// The repository URL is remembered in localStorage for convenience.
+// The GitHub token is kept in sessionStorage only and cleared when the browser
+// session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.55-windows-test-path-fix';
+const GITCMS_VERSION = '1.1.57-load-source-ref-fix';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -65,6 +65,32 @@ function toast(msg, kind) {
   t._t = setTimeout(() => t.classList.remove('show'), 2600);
 }
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const TokenStorage = Object.freeze({
+  read() {
+    const sessionToken = sessionStorage.getItem(LS_TOKEN);
+    if (sessionToken) return sessionToken;
+
+    // One-time cleanup for older GitCMS builds that used localStorage.
+    const oldToken = localStorage.getItem(LS_TOKEN);
+    if (oldToken) {
+      sessionStorage.setItem(LS_TOKEN, oldToken);
+      localStorage.removeItem(LS_TOKEN);
+      return oldToken;
+    }
+
+    return '';
+  },
+  write(token) {
+    sessionStorage.setItem(LS_TOKEN, token);
+    localStorage.removeItem(LS_TOKEN);
+  },
+  clear() {
+    sessionStorage.removeItem(LS_TOKEN);
+    localStorage.removeItem(LS_TOKEN);
+  }
+});
+
 
 const LastWriteCommitCache = Object.freeze({
   ttlMs: 30 * 60 * 1000,

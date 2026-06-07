@@ -2358,12 +2358,12 @@ function chooseReadCommitFromCacheValidation({ branchSha, cachedSha, cacheAheadB
 const LS_REPO = 'gitcms_repo',
   LS_TOKEN = 'gitcms_tok',
   LS_LAST_WRITE = 'gitcms_last_write_commits';
-// TODO SECURITY:
-// During development, the GitHub token is stored in localStorage for convenience.
-// Before production/public use, replace this with sessionStorage, OAuth/device flow,
-// or another safer auth model. Base64 is obfuscation only, not encryption.
+// Token storage:
+// The repository URL is remembered in localStorage for convenience.
+// The GitHub token is kept in sessionStorage only and cleared when the browser
+// session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.55-windows-test-path-fix';
+const GITCMS_VERSION = '1.1.57-load-source-ref-fix';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -2403,6 +2403,32 @@ function toast(msg, kind) {
   t._t = setTimeout(() => t.classList.remove('show'), 2600);
 }
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const TokenStorage = Object.freeze({
+  read() {
+    const sessionToken = sessionStorage.getItem(LS_TOKEN);
+    if (sessionToken) return sessionToken;
+
+    // One-time cleanup for older GitCMS builds that used localStorage.
+    const oldToken = localStorage.getItem(LS_TOKEN);
+    if (oldToken) {
+      sessionStorage.setItem(LS_TOKEN, oldToken);
+      localStorage.removeItem(LS_TOKEN);
+      return oldToken;
+    }
+
+    return '';
+  },
+  write(token) {
+    sessionStorage.setItem(LS_TOKEN, token);
+    localStorage.removeItem(LS_TOKEN);
+  },
+  clear() {
+    sessionStorage.removeItem(LS_TOKEN);
+    localStorage.removeItem(LS_TOKEN);
+  }
+});
+
 
 const LastWriteCommitCache = Object.freeze({
   ttlMs: 30 * 60 * 1000,
@@ -2468,6 +2494,66 @@ function escAttr(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
+
+/* Generated from src/lib/dirty-state.mjs. Do not edit this virtual browser module. */
+const DirtyState = (() => {
+function manifestLabelForFragment(manifest, fragment) {
+  if (!fragment) return '';
+  const entry = Array.isArray(manifest)
+    ? manifest.find((item) => item && item.id === fragment.id)
+    : null;
+  return entry && entry.label ? entry.label : fragment.id;
+}
+
+function isFragmentDirty(fragment, manifest) {
+  if (!fragment) return false;
+  const htmlDirty = String(fragment.innerHTML ?? '') !== String(fragment.origHTML ?? '');
+  const labelDirty =
+    String(fragment.label ?? fragment.id ?? '') !==
+    String(manifestLabelForFragment(manifest, fragment));
+  return htmlDirty || labelDirty;
+}
+
+function applyEditorValues(fragment, { html, label }, manifest) {
+  if (!fragment) return null;
+  const next = { ...fragment };
+  if (html !== undefined) next.innerHTML = html;
+  if (label !== undefined) next.label = String(label || fragment.id || '').trim() || fragment.id;
+  next.dirty = isFragmentDirty(next, manifest);
+  return next;
+}
+
+function markCleanAfterSave(fragment) {
+  if (!fragment) return null;
+  return {
+    ...fragment,
+    origHTML: fragment.innerHTML,
+    dirty: false
+  };
+}
+
+function dirtyFragments(fragments) {
+  const list = Array.isArray(fragments) ? fragments : [...(fragments || [])];
+  return list.filter((fragment) => fragment && fragment.dirty);
+}
+
+function dirtyFragmentIdsForFile(fileRec, fragmentMap) {
+  if (!fileRec || !Array.isArray(fileRec.fragments)) return [];
+  return fileRec.fragments.filter((id) => {
+    const fragment = fragmentMap instanceof Map ? fragmentMap.get(id) : fragmentMap?.[id];
+    return !!(fragment && fragment.dirty);
+  });
+}
+
+  return Object.freeze({
+    manifestLabelForFragment,
+    isFragmentDirty,
+    applyEditorValues,
+    markCleanAfterSave,
+    dirtyFragments,
+    dirtyFragmentIdsForFile
+  });
+})();
 
 /* ---------- Paths ---------- */
 // Depends on state from 00-core.js and mediaPrefix() from 02-path-media-wrappers.js
@@ -2572,38 +2658,29 @@ const Store = Object.freeze({
     state.frags.set(fragment.id, fragment);
   },
   manifestLabelForFragment(fragment) {
-    if (!fragment) return '';
-    const entry = state.manifest && state.manifest.find((e) => e.id === fragment.id);
-    return entry && entry.label ? entry.label : fragment.id;
+    return DirtyState.manifestLabelForFragment(state.manifest, fragment);
   },
   isFragmentDirty(fragment) {
-    if (!fragment) return false;
-    return (
-      String(fragment.innerHTML || '') !== String(fragment.origHTML || '') ||
-      String(fragment.label || fragment.id) !== String(this.manifestLabelForFragment(fragment))
-    );
+    return DirtyState.isFragmentDirty(fragment, state.manifest);
   },
   applyEditorValues(id, { html, label } = {}) {
     const fragment = state.frags.get(id);
     if (!fragment) return null;
-    if (html !== undefined) fragment.innerHTML = html;
-    if (label !== undefined) fragment.label = String(label).trim() || fragment.id;
-    fragment.dirty = this.isFragmentDirty(fragment);
+    const next = DirtyState.applyEditorValues(fragment, { html, label }, state.manifest);
+    Object.assign(fragment, next);
     return fragment;
   },
   markFragmentClean(id) {
     const fragment = state.frags.get(id);
     if (!fragment) return null;
-    fragment.origHTML = fragment.innerHTML;
-    fragment.dirty = false;
+    Object.assign(fragment, DirtyState.markCleanAfterSave(fragment));
     return fragment;
   },
   dirtyFragments() {
-    return [...state.frags.values()].filter((f) => f.dirty);
+    return DirtyState.dirtyFragments(state.frags.values());
   },
   dirtyFragmentIdsForFile(fileRec) {
-    if (!fileRec || !Array.isArray(fileRec.fragments)) return [];
-    return fileRec.fragments.filter((id) => state.frags.get(id)?.dirty);
+    return DirtyState.dirtyFragmentIdsForFile(fileRec, state.frags);
   },
   clearValidationBucket(kind) {
     if (state.validation && state.validation[kind]) state.validation[kind] = [];
@@ -2614,6 +2691,218 @@ const Store = Object.freeze({
     state.validation.runtime = [];
   }
 });
+
+/* Generated from src/lib/fragment-parser.mjs. Do not edit this virtual browser module. */
+const FragmentParser = (() => {
+function reEsc(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function cmsStartRe() {
+  return /<!--\s*cms:start\s+([A-Za-z0-9_.:-]+)\s*-->/gi;
+}
+function attrGet(attrs, name) {
+  const m = String(attrs || '').match(new RegExp(name + '\\s*=\\s*["\']([^"\']*)["\']', 'i'));
+  return m ? m[1] : '';
+}
+function fragmentIdFromAttrs(attrs, fallback = '') {
+  return attrGet(attrs, 'data-fragment') || attrGet(attrs, 'id') || fallback;
+}
+function findTagEnd(src, start) {
+  let quote = null;
+  for (let i = start; i < src.length; i++) {
+    const ch = src[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '>') {
+      return i;
+    }
+  }
+  return -1;
+}
+function findFirstElement(block) {
+  const re = /<([A-Za-z][A-Za-z0-9:-]*)(?=[\s>/])/g;
+  let m;
+  while ((m = re.exec(block))) {
+    const openStart = m.index;
+    const openEnd = findTagEnd(block, openStart);
+    if (openEnd < 0) continue;
+    const tag = m[1];
+    const openTag = block.slice(openStart, openEnd + 1);
+    const attrs = block.slice(openStart + 1 + tag.length, openEnd);
+    return { tag, openStart, openEnd, openTag, attrs };
+  }
+  return null;
+}
+function findMatchingClose(block, tagName, from) {
+  const re = new RegExp(`<\\/?${reEsc(tagName)}(?=[\\s>/])`, 'gi');
+  re.lastIndex = from;
+  let depth = 1,
+    m;
+  while ((m = re.exec(block))) {
+    const idx = m.index;
+    const isClose = block[idx + 1] === '/';
+    const tagEnd = findTagEnd(block, idx);
+    if (tagEnd < 0) return null;
+    if (isClose) {
+      depth--;
+      if (depth === 0)
+        return { closeStart: idx, closeEnd: tagEnd + 1, closeTag: block.slice(idx, tagEnd + 1) };
+    } else {
+      const open = block.slice(idx, tagEnd + 1);
+      if (!/\/\s*>$/.test(open)) depth++;
+    }
+    re.lastIndex = tagEnd + 1;
+  }
+  return null;
+}
+function markerEndRegex(id) {
+  return new RegExp(`<!--\\s*cms:end\\s+${reEsc(id)}\\s*-->`, 'i');
+}
+function classHasFragment(attrs) {
+  const m = String(attrs || '').match(/class\s*=\s*["']([^"']*)["']/i);
+  return m ? /\bfragment\b/.test(m[1]) : false;
+}
+function attrsDeclareFragment(attrs) {
+  return !!attrGet(attrs, 'data-fragment') || classHasFragment(attrs);
+}
+function findMarkedFragments(content, wantedId = null) {
+  const out = [];
+  const startRe = cmsStartRe();
+  let sm;
+  while ((sm = startRe.exec(content))) {
+    const markerId = sm[1];
+    if (wantedId && markerId !== wantedId) continue;
+    const afterStart = startRe.lastIndex;
+    const endRe = markerEndRegex(markerId);
+    const rest = content.slice(afterStart);
+    const em = endRe.exec(rest);
+    if (!em) continue;
+    const blockStart = afterStart;
+    const blockEnd = afterStart + em.index;
+    const fullStart = sm.index;
+    const fullEnd = blockEnd + em[0].length;
+    const markerStart = content.slice(fullStart, blockStart);
+    const markerEnd = content.slice(blockEnd, fullEnd);
+    const block = content.slice(blockStart, blockEnd);
+    const first = findFirstElement(block);
+    if (!first) {
+      startRe.lastIndex = fullEnd;
+      continue;
+    }
+    const close = findMatchingClose(block, first.tag, first.openEnd + 1);
+    if (!close) {
+      startRe.lastIndex = fullEnd;
+      continue;
+    }
+    const id = fragmentIdFromAttrs(first.attrs, markerId);
+    if (!id) {
+      startRe.lastIndex = fullEnd;
+      continue;
+    }
+    if (wantedId && id !== wantedId && markerId !== wantedId) {
+      startRe.lastIndex = fullEnd;
+      continue;
+    }
+    out.push({
+      mode: 'marker',
+      markerId,
+      id,
+      tag: first.tag,
+      attrs: first.attrs,
+      openTag: first.openTag,
+      closeTag: close.closeTag,
+      innerHTML: block.slice(first.openEnd + 1, close.closeStart),
+      blockPrefix: block.slice(0, first.openStart),
+      blockSuffix: block.slice(close.closeEnd),
+      markerStart,
+      markerEnd,
+      fullStart,
+      fullEnd
+    });
+    startRe.lastIndex = fullEnd;
+    if (wantedId) break;
+  }
+  return out;
+}
+function extractMarkedFragment(content, wantedId = null) {
+  return findMarkedFragments(content, wantedId)[0] || null;
+}
+function rebuildMarkedFragmentFromParts(parts, innerHTML) {
+  return (
+    parts.markerStart +
+    parts.blockPrefix +
+    parts.openTag +
+    innerHTML +
+    parts.closeTag +
+    parts.blockSuffix +
+    parts.markerEnd
+  );
+}
+function replaceMarkedFragment(content, id, innerHTML) {
+  const parts = extractMarkedFragment(content, id);
+  if (!parts) throw new Error(`Fragment markers not found in file: ${id}`);
+  return (
+    content.slice(0, parts.fullStart) +
+    rebuildMarkedFragmentFromParts(parts, innerHTML) +
+    content.slice(parts.fullEnd)
+  );
+}
+function validateMarkers(content, path = 'file') {
+  const warnings = [];
+  const startRe = cmsStartRe();
+  const seen = new Set();
+  let sm;
+  while ((sm = startRe.exec(content))) {
+    const markerId = sm[1];
+    if (seen.has(markerId)) warnings.push(`${path}: duplicate cms marker id "${markerId}".`);
+    seen.add(markerId);
+    const afterStart = startRe.lastIndex;
+    const rest = content.slice(afterStart);
+    const em = markerEndRegex(markerId).exec(rest);
+    if (!em) {
+      warnings.push(`${path}: cms:start "${markerId}" has no matching cms:end "${markerId}".`);
+      continue;
+    }
+    const block = content.slice(afterStart, afterStart + em.index);
+    const first = findFirstElement(block);
+    if (!first) {
+      warnings.push(`${path}: marker "${markerId}" contains no valid HTML element.`);
+      startRe.lastIndex = afterStart + em.index + em[0].length;
+      continue;
+    }
+    const close = findMatchingClose(block, first.tag, first.openEnd + 1);
+    if (!close) {
+      warnings.push(`${path}: marker "${markerId}" has an unclosed <${first.tag}> element.`);
+      startRe.lastIndex = afterStart + em.index + em[0].length;
+      continue;
+    }
+    const dataId = attrGet(first.attrs, 'data-fragment');
+    if (dataId && dataId !== markerId)
+      warnings.push(`${path}: cms marker "${markerId}" does not match data-fragment="${dataId}".`);
+    if (!dataId)
+      warnings.push(`${path}: marker "${markerId}" should include data-fragment="${markerId}".`);
+    if (!attrGet(first.attrs, 'data-label'))
+      warnings.push(
+        `${path}: marker "${markerId}" should include data-label for a clearer sidebar label.`
+      );
+    startRe.lastIndex = afterStart + em.index + em[0].length;
+  }
+  return warnings;
+}
+
+const FragmentParser = Object.freeze({
+  attrGet,
+  findMarkedFragments,
+  extractMarkedFragment,
+  replaceMarkedFragment,
+  validateMarkers,
+  rebuildMarkedFragmentFromParts,
+  attrsDeclareFragment
+});
+  return FragmentParser;
+})();
 
 /* ---------- GitHub API client ---------- */
 // Depends on state/Store/Paths/LastWriteCommitCache from 00-core.js
@@ -2954,7 +3243,97 @@ function githubErrorKind(error) {
   });
 })();
 
-/* ---------- validation ---------- */
+/* Generated from src/lib/validation.mjs. Do not edit this virtual browser module. */
+const Validation = (() => {
+const Validation = Object.freeze({
+  validateConfig(cfg, { source = 'config', owner = '', repo = '' } = {}) {
+    const warnings = [];
+    const add = (m) => warnings.push(`${source}: ${m}`);
+    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) {
+      add('gitcms.config.json was not found or is not a JSON object.');
+      return warnings;
+    }
+    if (typeof cfg.workBranch !== 'string' || !cfg.workBranch.trim())
+      add('missing "workBranch". Recommended value: "content".');
+    if (typeof cfg.manifestPath !== 'string' || !cfg.manifestPath.trim())
+      add('missing "manifestPath". Recommended value: "fragments.json".');
+    if (!cfg.media || typeof cfg.media !== 'object' || Array.isArray(cfg.media)) {
+      add('missing "media" object.');
+    } else {
+      if (typeof cfg.media.dir !== 'string' || !cfg.media.dir.trim())
+        add('missing "media.dir". Recommended for docs publishing: "docs/assets/media".');
+      if (typeof cfg.media.publicPrefix !== 'string' || !cfg.media.publicPrefix.trim()) {
+        add(
+          'missing "media.publicPrefix". Recommended for GitHub Pages project sites: "assets/media/".'
+        );
+      } else {
+        const prefix = cfg.media.publicPrefix.trim();
+        if (prefix.startsWith('/') && Paths.isProjectPagesSite(owner, repo)) {
+          add(
+            'media.publicPrefix starts with "/". For GitHub Pages project sites, use a relative prefix like "assets/media/".'
+          );
+        }
+      }
+    }
+    if (cfg.preview !== undefined) {
+      if (!cfg.preview || typeof cfg.preview !== 'object' || Array.isArray(cfg.preview)) {
+        add('"preview" must be an object if provided.');
+      } else if (cfg.preview.css !== undefined) {
+        const css = Array.isArray(cfg.preview.css)
+          ? cfg.preview.css
+          : typeof cfg.preview.css === 'string'
+            ? [cfg.preview.css]
+            : null;
+        if (!css) add('"preview.css" must be a string or an array of strings.');
+        else
+          css.forEach((p, i) => {
+            if (typeof p !== 'string' || !p.trim())
+              add(`preview.css entry ${i + 1} must be a non-empty string.`);
+            if (typeof p === 'string' && p.trim().startsWith('/'))
+              add(
+                `preview.css entry "${p}" starts with "/". For GitHub Pages project sites, use relative paths like "assets/style.css".`
+              );
+          });
+      }
+    }
+    return warnings;
+  },
+  validateManifestEntries(manifest, { source = 'manifest' } = {}) {
+    const warnings = [];
+    const add = (m) => warnings.push(`${source}: ${m}`);
+    if (!Array.isArray(manifest)) {
+      add('fragments manifest must be a JSON array.');
+      return warnings;
+    }
+    const seen = new Set();
+    manifest.forEach((entry, i) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        add(`entry ${i + 1} must be an object.`);
+        return;
+      }
+      const id = String(entry.id || '').trim();
+      const file = String(entry.file || '').trim();
+      const label = String(entry.label || '').trim();
+      if (!id) add(`entry ${i + 1} is missing "id".`);
+      if (!file) add(`entry ${i + 1} (${id || 'no id'}) is missing "file".`);
+      if (!label) add(`entry ${i + 1} (${id || 'no id'}) is missing "label".`);
+      if (id && seen.has(id)) add(`duplicate fragment id "${id}".`);
+      if (id) seen.add(id);
+      if (file.startsWith('/'))
+        add(
+          `fragment "${id}" uses an absolute file path "${file}". Use repo-relative paths like "docs/index.html".`
+        );
+    });
+    return warnings;
+  },
+  validateMarkers(content, path = 'file') {
+    return FragmentParser.validateMarkers(content, path);
+  }
+});
+  return Validation;
+})();
+
+/* ---------- validation browser wrappers ---------- */
 function validationCount() {
   const v = state.validation || {};
   return ['config', 'manifest', 'markers', 'runtime'].reduce(
@@ -2962,15 +3341,18 @@ function validationCount() {
     0
   );
 }
+
 function resetLoadValidation() {
   state.validation.manifest = [];
   state.validation.markers = [];
   state.validation.runtime = [];
 }
+
 function addValidation(kind, msg) {
   if (!state.validation[kind]) state.validation[kind] = [];
   if (!state.validation[kind].includes(msg)) state.validation[kind].push(msg);
 }
+
 function allValidationWarnings() {
   const v = state.validation || {};
   const out = [];
@@ -2979,106 +3361,19 @@ function allValidationWarnings() {
   }
   return out;
 }
+
 function validateGitCMSConfig(cfg, source = 'config') {
-  const warnings = [];
-  const add = (m) => warnings.push(`${source}: ${m}`);
-
-  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) {
-    add('gitcms.config.json was not found or is not a JSON object.');
-    return warnings;
-  }
-
-  if (typeof cfg.workBranch !== 'string' || !cfg.workBranch.trim()) {
-    add('missing "workBranch". Recommended value: "content".');
-  }
-  if (typeof cfg.manifestPath !== 'string' || !cfg.manifestPath.trim()) {
-    add('missing "manifestPath". Recommended value: "fragments.json".');
-  }
-
-  if (!cfg.media || typeof cfg.media !== 'object' || Array.isArray(cfg.media)) {
-    add('missing "media" object.');
-  } else {
-    if (typeof cfg.media.dir !== 'string' || !cfg.media.dir.trim()) {
-      add('missing "media.dir". Recommended for docs publishing: "docs/assets/media".');
-    }
-    if (typeof cfg.media.publicPrefix !== 'string' || !cfg.media.publicPrefix.trim()) {
-      add(
-        'missing "media.publicPrefix". Recommended for GitHub Pages project sites: "assets/media/".'
-      );
-    } else {
-      const prefix = cfg.media.publicPrefix.trim();
-      const isProjectSite =
-        state.owner &&
-        state.repo &&
-        state.repo.toLowerCase() !== `${state.owner.toLowerCase()}.github.io`;
-      if (prefix.startsWith('/') && isProjectSite) {
-        add(
-          `media.publicPrefix starts with "/". For GitHub Pages project sites, use a relative prefix like "assets/media/".`
-        );
-      }
-    }
-  }
-
-  if (cfg.preview !== undefined) {
-    if (!cfg.preview || typeof cfg.preview !== 'object' || Array.isArray(cfg.preview)) {
-      add('"preview" must be an object if provided.');
-    } else if (cfg.preview.css !== undefined) {
-      const css = Array.isArray(cfg.preview.css)
-        ? cfg.preview.css
-        : typeof cfg.preview.css === 'string'
-          ? [cfg.preview.css]
-          : null;
-      if (!css) {
-        add('"preview.css" must be a string or an array of strings.');
-      } else {
-        css.forEach((p, i) => {
-          if (typeof p !== 'string' || !p.trim())
-            add(`preview.css entry ${i + 1} must be a non-empty string.`);
-          if (typeof p === 'string' && p.trim().startsWith('/')) {
-            add(
-              `preview.css entry "${p}" starts with "/". For GitHub Pages project sites, use relative paths like "assets/style.css".`
-            );
-          }
-        });
-      }
-    }
-  }
-
-  return warnings;
-}
-function validateManifestEntries(manifest, source = 'manifest') {
-  const warnings = [];
-  const add = (m) => warnings.push(`${source}: ${m}`);
-
-  if (!Array.isArray(manifest)) {
-    add('fragments manifest must be a JSON array.');
-    return warnings;
-  }
-
-  const seen = new Set();
-  manifest.forEach((entry, i) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      add(`entry ${i + 1} must be an object.`);
-      return;
-    }
-
-    const id = String(entry.id || '').trim();
-    const file = String(entry.file || '').trim();
-    const label = String(entry.label || '').trim();
-
-    if (!id) add(`entry ${i + 1} is missing "id".`);
-    if (!file) add(`entry ${i + 1} (${id || 'no id'}) is missing "file".`);
-    if (!label) add(`entry ${i + 1} (${id || 'no id'}) is missing "label".`);
-    if (id && seen.has(id)) add(`duplicate fragment id "${id}".`);
-    if (id) seen.add(id);
-    if (file.startsWith('/'))
-      add(
-        `fragment "${id}" uses an absolute file path "${file}". Use repo-relative paths like "docs/index.html".`
-      );
+  return Validation.validateConfig(cfg, {
+    source,
+    owner: state.owner,
+    repo: state.repo
   });
-
-  return warnings;
 }
+
+function validateManifestEntries(manifest, source = 'manifest') {
+  return Validation.validateManifestEntries(manifest, { source });
+}
+
 function validateManifestMatchesLoaded(manifest, source = 'manifest') {
   if (!Array.isArray(manifest)) return;
   for (const entry of manifest) {
@@ -3097,76 +3392,12 @@ function validateManifestMatchesLoaded(manifest, source = 'manifest') {
     }
   }
 }
+
 function validateMarkersInFile(fileRec) {
-  const content = fileRec.content || '';
-  const startRe = cmsStartRe();
-  const seen = new Set();
-  let sm;
-
-  while ((sm = startRe.exec(content))) {
-    const markerId = sm[1];
-    if (seen.has(markerId)) {
-      addValidation('markers', `${fileRec.path}: duplicate cms marker id "${markerId}".`);
-    }
-    seen.add(markerId);
-
-    const afterStart = startRe.lastIndex;
-    const rest = content.slice(afterStart);
-    const endRe = markerEndRegex(markerId);
-    const em = endRe.exec(rest);
-
-    if (!em) {
-      addValidation(
-        'markers',
-        `${fileRec.path}: cms:start "${markerId}" has no matching cms:end "${markerId}".`
-      );
-      continue;
-    }
-
-    const block = content.slice(afterStart, afterStart + em.index);
-    const first = findFirstElement(block);
-    if (!first) {
-      addValidation(
-        'markers',
-        `${fileRec.path}: marker "${markerId}" contains no valid HTML element.`
-      );
-      startRe.lastIndex = afterStart + em.index + em[0].length;
-      continue;
-    }
-
-    const close = findMatchingClose(block, first.tag, first.openEnd + 1);
-    if (!close) {
-      addValidation(
-        'markers',
-        `${fileRec.path}: marker "${markerId}" has an unclosed <${first.tag}> element.`
-      );
-      startRe.lastIndex = afterStart + em.index + em[0].length;
-      continue;
-    }
-
-    const dataId = attrGet(first.attrs, 'data-fragment');
-    if (dataId && dataId !== markerId) {
-      addValidation(
-        'markers',
-        `${fileRec.path}: cms marker "${markerId}" does not match data-fragment="${dataId}".`
-      );
-    }
-    if (!dataId) {
-      addValidation(
-        'markers',
-        `${fileRec.path}: marker "${markerId}" should include data-fragment="${markerId}".`
-      );
-    }
-    if (!attrGet(first.attrs, 'data-label')) {
-      addValidation(
-        'markers',
-        `${fileRec.path}: marker "${markerId}" should include data-label for a clearer sidebar label.`
-      );
-    }
-
-    startRe.lastIndex = afterStart + em.index + em[0].length;
-  }
+  const warnings = Validation.validateMarkers(fileRec.content || '', fileRec.path);
+  for (const warning of warnings) addValidation('markers', warning);
 }
+
 function renderValidationBox() {
   const box = el('validationBox');
   if (!box) return;
@@ -3189,18 +3420,6 @@ function renderValidationBox() {
   box.innerHTML = `<b>${warnings.length} validation warning${warnings.length === 1 ? '' : 's'}</b><ul>${rows}${more}</ul>`;
   box.classList.add('show');
 }
-
-const Validation = Object.freeze({
-  count: validationCount,
-  resetLoad: resetLoadValidation,
-  add: addValidation,
-  all: allValidationWarnings,
-  validateConfig: validateGitCMSConfig,
-  validateManifestEntries,
-  validateManifestMatchesLoaded,
-  validateMarkersInFile,
-  renderBox: renderValidationBox
-});
 
 /* Generated from src/lib/config-utils.mjs. Do not edit this virtual browser module. */
 const ConfigUtils = (() => {
@@ -3542,14 +3761,6 @@ function parseFileFragments(fileRec) {
   return ids;
 }
 
-const FragmentParser = Object.freeze({
-  findMarkedFragments,
-  extractMarkedFragment,
-  rebuildFragment,
-  rebuildMarkedFragmentFromParts,
-  parseFileFragments
-});
-
 /* ---------- path/media wrapper helpers ---------- */
 // Thin browser wrappers around Paths/config helpers.
 // Kept separate from 00-core.js so core stays focused on constants/state/Store.
@@ -3657,7 +3868,7 @@ async function connect() {
 
     // persist creds
     localStorage.setItem(LS_REPO, url.trim());
-    localStorage.setItem(LS_TOKEN, enc(tok));
+    TokenStorage.write(enc(tok));
 
     el('login').style.display = 'none';
     el('app').style.display = 'flex';
@@ -3924,7 +4135,7 @@ async function tryTreeScan() {
 
   const recs = await Promise.all(
     paths.map((p) =>
-      fetchFile(p, sourceRef).catch((e) => {
+      fetchFile(p, snapshot.commitSha || state.workBranch).catch((e) => {
         console.warn('scan skip', p, e);
         return null;
       })
@@ -4965,11 +5176,9 @@ function stampedUploadName({ stamp, index, total, originalName }) {
   });
 })();
 
-/* ---------- media library ---------- */
+/* ---------- config/settings ---------- */
 let gitcmsConfig = null;
 let gitcmsConfigLoaded = false;
-const pendingMediaPreviews = new Map(); // path -> {url,name,path,size,type,sha,expiresAt}
-
 async function loadGitCMSConfig(force = false, refs = null) {
   if (gitcmsConfigLoaded && !force) return gitcmsConfig;
   gitcmsConfigLoaded = true;
@@ -5090,6 +5299,13 @@ async function saveConfig() {
     btn.textContent = 'Save config';
   }
 }
+
+el('settingsBtn').onclick = openSettings;
+el('settingsClose').onclick = () => el('settingsModal').classList.remove('show');
+el('settingsSave').onclick = saveConfig;
+
+/* ---------- media library ---------- */
+const pendingMediaPreviews = new Map(); // path -> {url,name,path,size,type,sha,expiresAt}
 
 function showMediaErr(msg) {
   const err = el('mediaErr');
@@ -5520,9 +5736,6 @@ async function uploadMediaFiles() {
   }
 }
 
-el('settingsBtn').onclick = openSettings;
-el('settingsClose').onclick = () => el('settingsModal').classList.remove('show');
-el('settingsSave').onclick = saveConfig;
 el('mediaBtn').onclick = openMedia;
 el('mediaClose').onclick = () => el('mediaModal').classList.remove('show');
 el('mediaRefreshBtn').onclick = loadMedia;
@@ -6615,7 +6828,7 @@ el('resetDraftBtn').onclick = async () => {
 };
 el('disconnectBtn').onclick = () => {
   localStorage.removeItem(LS_REPO);
-  localStorage.removeItem(LS_TOKEN);
+  TokenStorage.clear();
   location.reload();
 };
 el('connectBtn').onclick = connect;
@@ -6669,7 +6882,7 @@ window.addEventListener('beforeunload', (e) => {
 /* ---------- prefill ---------- */
 (function init() {
   const r = localStorage.getItem(LS_REPO),
-    t = localStorage.getItem(LS_TOKEN);
+    t = TokenStorage.read();
   if (r) el('repoUrl').value = r;
   if (t) {
     try {

@@ -22,9 +22,21 @@ const SHARED_UTILITY_MODULES = Object.freeze({
     lib: "content-source-utils.mjs",
     global: "ContentSourceUtils"
   },
+  "00-dirty-state.js": {
+    lib: "dirty-state.mjs",
+    global: "DirtyState"
+  },
+  "01-fragment-parser.js": {
+    lib: "fragment-parser.mjs",
+    global: "FragmentParser"
+  },
   "01-github-errors.js": {
     lib: "github-errors.mjs",
     global: "GitHubErrors"
+  },
+  "01-validation-core.js": {
+    lib: "validation.mjs",
+    global: "Validation"
   },
   "02-config-utils.js": {
     lib: "config-utils.mjs",

@@ -5,7 +5,7 @@ A zero-backend GitHub CMS admin for editing HTML fragments in a separate content
 Current version:
 
 ```txt
-1.1.55-windows-test-path-fix
+1.1.57-load-source-ref-fix
 ```
 
 ---
@@ -191,3 +191,26 @@ shared utility logic generated from src/lib/*.mjs
 ```
 
 Do not add scattered release-note markdown files. Keep documentation centralized here unless a separate document is clearly necessary.
+
+
+---
+
+## Architecture cleanup notes
+
+Current cleanup status:
+
+```txt
+dirty-state logic lives in src/lib/dirty-state.mjs
+validation logic lives in src/lib/validation.mjs
+browser wrappers delegate to shared lib-generated globals
+config/settings code is split from media-library code
+GitHub token uses sessionStorage, not localStorage
+```
+
+Known watch areas:
+
+```txt
+state is still a mutable global object behind a thin Store wrapper
+fragment parsing is regex/depth based and should stay heavily tested
+future releases should use clean release labels, not debug labels
+```
