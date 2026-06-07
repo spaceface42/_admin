@@ -14,8 +14,8 @@ test('top editor toolbar uses dynamic quick snippet container', () => {
   assert.doesNotMatch(toolbar, /data-snippet="section"/);
 });
 
-test('larger snippets are provided by default snippet definitions', () => {
-  const js = readFileSync(new URL('../src/js/07-editor-utils.js', import.meta.url), 'utf8');
+test('larger snippets are provided by shared editor utility definitions', () => {
+  const js = readFileSync(new URL('../src/lib/editor-utils.mjs', import.meta.url), 'utf8');
 
   assert.match(js, /id: 'columns'/);
   assert.match(js, /id: 'section'/);

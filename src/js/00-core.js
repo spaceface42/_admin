@@ -25,7 +25,7 @@ const LS_REPO = 'gitcms_repo',
 // Before production/public use, replace this with sessionStorage, OAuth/device flow,
 // or another safer auth model. Base64 is obfuscation only, not encryption.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.52-media-thumbs-contents-api';
+const GITCMS_VERSION = '1.1.55-windows-test-path-fix';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';

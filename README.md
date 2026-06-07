@@ -1,54 +1,55 @@
-# GitCMS
+# GitCMS Admin
 
-A small, zero-backend CMS for editing static HTML fragments through GitHub.
+A zero-backend GitHub CMS admin for editing HTML fragments in a separate content/site repository.
 
-Current stable version:
-
-```txt
-1.1.28-release-hardening
-```
-
-## Branch model
+Current version:
 
 ```txt
-content = CMS source of truth
-main    = deploy target only
+1.1.55-windows-test-path-fix
 ```
 
-## Publish model
+---
+
+## Repository Model
+
+Recommended setup:
 
 ```txt
-Save    -> content
-Publish -> main
+_admin     = admin app / GitHub Pages host
+_blackhole = content/site repository
 ```
 
-GitCMS does not merge `main` back into `content`.
+Branch model inside the content/site repo:
 
-## Runtime files
+```txt
+content = editing / CMS source branch
+main    = live published branch
+```
 
-For the deployed CMS/site:
+Keep this two-branch workflow. It prevents every save from going live immediately.
+
+---
+
+## Build Output
+
+The build generates:
 
 ```txt
 admin.html
-gitcms.config.json
-fragments.json
-docs/
+docs/admin.html
 ```
 
-## Development files
+`docs/admin.html` is intended for GitHub Pages when Pages publishes from `docs/`.
 
-For editing/building/testing GitCMS:
+---
 
-```txt
-src/
-tests/
-build-admin.mjs
-package.json
-eslint.config.mjs
-.prettierrc.json
-.prettierignore
-.github/workflows/quality.yml
+## Install
+
+```bash
+npm install
 ```
+
+---
 
 ## Build
 
@@ -56,43 +57,137 @@ eslint.config.mjs
 npm run build
 ```
 
+The build uses `esbuild` when dependencies are installed.
+
+The build pipeline:
+
+```txt
+src/lib/*.mjs              shared utility source of truth
+src/js/*.js                browser app logic
+build-admin.mjs            generates src/admin.js
+admin.html                 standalone local/admin artifact
+docs/admin.html            GitHub Pages artifact
+```
+
+---
+
 ## Test
+
+Unit/source tests:
 
 ```bash
 npm test
 ```
 
-## Recommended release check
+Syntax check:
 
-Read and run:
-
-```txt
-MANUAL_REGRESSION_TEST.md
+```bash
+npm run check
 ```
 
-## Useful docs
+Quality check:
 
-```txt
-STABLE.md
-PUBLISH_WORKFLOW.md
-RELEASE_CHECKLIST.md
+```bash
+npm run quality
 ```
 
-## Architecture
+Browser smoke tests:
 
-```txt
-ARCHITECTURE.md
+```bash
+npx playwright install chromium
+npm run build
+npm run test:smoke
 ```
 
-## Admin repo vs content repo
+---
 
-GitCMS can be hosted from one repository while editing another.
-
-Example:
+## Source Layout
 
 ```txt
-_admin     = admin app / GitHub Pages host
-_blackhole = content/site repository
+src/index.html             admin shell
+src/admin.css              admin styles
+src/js/                    browser app logic
+src/lib/                   shared utility modules used by tests and generated browser wrappers
+tests/                     Node unit/source tests
+smoke/                     Playwright smoke tests
+docs/                      GitHub Pages output/sample site files
+.github/workflows/         CI workflows
 ```
 
-In the login screen, enter the content/site repository URL, not necessarily the admin-hosting repository URL.
+Manual duplicated browser utility files were removed. Shared utility logic lives in `src/lib/*.mjs`.
+
+---
+
+## Content Repo Config
+
+The content/site repository may contain:
+
+```txt
+gitcms.config.json
+fragments.json
+docs/
+```
+
+Example `gitcms.config.json`:
+
+```json
+{
+  "workBranch": "content",
+  "manifestPath": "fragments.json",
+  "media": {
+    "dir": "docs/assets/media",
+    "publicPrefix": "assets/media/"
+  },
+  "preview": {
+    "css": ["assets/style.css"]
+  }
+}
+```
+
+---
+
+## Configurable Editor Snippets
+
+Snippets can be configured in `gitcms.config.json`:
+
+```json
+{
+  "editor": {
+    "snippets": [
+      {
+        "id": "alert",
+        "label": "Alert box",
+        "hint": "<div class=\"alert\">",
+        "quick": true,
+        "html": "<div class=\"alert\">\n  <p>{{text|Alert text}}</p>\n</div>"
+      }
+    ]
+  }
+}
+```
+
+Placeholder syntax:
+
+```txt
+{{text|Fallback text}}
+{{attr:text|Fallback attribute text}}
+{{items|First item\nSecond item}}
+```
+
+---
+
+## Stable Notes
+
+Current stable architecture:
+
+```txt
+content branch = CMS editing source of truth
+main branch    = published live site
+manifest-first loading for HTML fragments
+direct Contents API for media thumbnails
+single-file admin build
+docs/admin.html copied during build
+shared utility logic generated from src/lib/*.mjs
+```
+
+Do not add scattered release-note markdown files. Keep documentation centralized here unless a separate document is clearly necessary.
