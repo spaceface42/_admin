@@ -1,0 +1,146 @@
+/* ---------- backup / restore ---------- */
+
+el('backupBtn').onclick = () => {
+  el('backupRestoreErr').textContent = '';
+  el('backupRestoreErr').classList.remove('show');
+  el('backupModal').classList.add('show');
+};
+el('backupClose').onclick = () => el('backupModal').classList.remove('show');
+el('backupDownloadBtn').onclick = downloadBackup;
+el('backupRestoreFile').onchange = (e) => {
+  const file = e.target.files[0];
+  el('backupRestoreBtn').disabled = !file;
+  el('backupRestoreBtn').textContent = file ? `Restore "${file.name}"` : 'Restore from ZIP';
+};
+el('backupRestoreBtn').onclick = () => {
+  const file = el('backupRestoreFile').files[0];
+  if (file) restoreBackup(file);
+};
+
+async function downloadBackup() {
+  const btn = el('backupDownloadBtn');
+  btn.disabled = true;
+  const mdir = mediaDir();
+
+  try {
+    const snapshot = await GitHubApi.getBranchTreeSnapshot(state.workBranch, { force: true });
+    const blobs = (snapshot.tree || []).filter((n) => n.type === 'blob');
+
+    const wanted = blobs.filter((n) => {
+      const p = n.path;
+      return (
+        /\.html?$/i.test(p) ||
+        p === state.manifestPath ||
+        p === 'gitcms.config.json' ||
+        p.startsWith(mdir + '/')
+      );
+    });
+
+    const zip = new JSZip();
+    zip.file(
+      'metadata.json',
+      JSON.stringify(
+        {
+          version: '1.1.61',
+          repo: `${state.owner}/${state.repo}`,
+          branch: state.workBranch,
+          commitSha: snapshot.commitSha || '',
+          timestamp: new Date().toISOString(),
+          files: wanted.map((n) => n.path)
+        },
+        null,
+        2
+      )
+    );
+
+    let done = 0;
+    await Promise.all(
+      wanted.map(async (node) => {
+        try {
+          const r = await GitHubApi.getContent(node.path, snapshot.commitSha || state.workBranch);
+          const isText = /\.(html?|json|css|js|txt|md|svg)$/i.test(node.path);
+          zip.file(node.path, isText ? dec(r.content) : r.content, { base64: !isText });
+        } catch (e) {
+          console.warn('backup skip', node.path, e);
+        }
+        btn.textContent = `Downloading… ${++done}/${wanted.length}`;
+      })
+    );
+
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const date = new Date().toISOString().slice(0, 10);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `gitcms-backup-${state.repo}-${date}.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Backup downloaded', 'ok');
+    el('backupModal').classList.remove('show');
+  } catch (e) {
+    toast('Backup failed: ' + e.message, 'err');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Download ZIP';
+  }
+}
+
+async function restoreBackup(file) {
+  const btn = el('backupRestoreBtn');
+  const errEl = el('backupRestoreErr');
+  btn.disabled = true;
+  errEl.textContent = '';
+  errEl.classList.remove('show');
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const metaFile = zip.file('metadata.json');
+    if (!metaFile) throw new Error('Not a valid GitCMS backup — metadata.json missing.');
+
+    const meta = JSON.parse(await metaFile.async('string'));
+    const paths = (meta.files || Object.keys(zip.files)).filter((k) => k !== 'metadata.json' && !k.endsWith('/'));
+
+    btn.textContent = `Restoring 0/${paths.length}…`;
+
+    let done = 0;
+    for (const path of paths) {
+      const entry = zip.file(path);
+      if (!entry) continue;
+
+      const isText = /\.(html?|json|css|js|txt|md|svg)$/i.test(path);
+      const content = isText
+        ? enc(await entry.async('string'))
+        : await entry.async('base64');
+
+      let sha = null;
+      try {
+        const cur = await GitHubApi.getFileForWrite(path, state.workBranch);
+        sha = cur.sha;
+      } catch (e) {
+        if (e.status !== 404) throw e;
+      }
+
+      await GitHubApi.saveFile(path, {
+        message: `cms: restore from backup (${meta.timestamp || file.name})`,
+        content,
+        branch: state.workBranch,
+        sha
+      });
+
+      btn.textContent = `Restoring ${++done}/${paths.length}…`;
+    }
+
+    Store.clearContentTree();
+    toast(`Restored ${done} files to ${state.workBranch}`, 'ok');
+    el('backupModal').classList.remove('show');
+    el('backupRestoreFile').value = '';
+    btn.textContent = 'Restore from ZIP';
+    await loadAll();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+    console.error('restore error', e);
+  } finally {
+    btn.disabled = false;
+  }
+}

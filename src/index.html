@@ -118,6 +118,14 @@
           </svg>
           Settings
         </button>
+        <button class="tbtn ghost" id="backupBtn" title="Backup and restore content branch">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <path d="M7 10l5 5 5-5" />
+            <path d="M12 15V3" />
+          </svg>
+          Backup
+        </button>
         <button class="tbtn ghost" id="diagnosticsBtn" title="Show CMS diagnostics">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 12l2 2 4-4" />
@@ -511,6 +519,26 @@
         <div class="modal-row">
           <button class="tbtn ghost" id="altCancel">Cancel</button>
           <button class="tbtn pub" id="altInsert">Insert image</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- BACKUP MODAL -->
+    <div class="modal-bg" id="backupModal">
+      <div class="modal">
+        <h3>Backup &amp; Restore</h3>
+        <p class="mdesc">Download a ZIP of all content branch files, or restore from a previously downloaded backup.</p>
+        <div class="modal-row" style="margin-bottom:12px">
+          <button class="tbtn pub" id="backupDownloadBtn">Download ZIP</button>
+        </div>
+        <div class="field">
+          <label>Restore from backup ZIP</label>
+          <input type="file" id="backupRestoreFile" accept=".zip" />
+        </div>
+        <div class="modal-err" id="backupRestoreErr"></div>
+        <div class="modal-row">
+          <button class="tbtn ghost" id="backupClose">Close</button>
+          <button class="tbtn" id="backupRestoreBtn" disabled>Restore from ZIP</button>
         </div>
       </div>
     </div>

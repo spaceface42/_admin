@@ -14,9 +14,10 @@
     "test:smoke": "playwright test"
   },
   "devDependencies": {
-    "eslint": "^9.0.0",
-    "prettier": "^3.0.0",
     "@playwright/test": "^1.49.0",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "eslint": "^9.0.0",
+    "jszip": "^3.10.1",
+    "prettier": "^3.0.0"
   }
 }

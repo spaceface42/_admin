@@ -4,6 +4,7 @@ const htmlPath = new URL("./src/index.html", import.meta.url);
 const cssPath = new URL("./src/admin.css", import.meta.url);
 const jsDir = new URL("./src/js/", import.meta.url);
 const libDir = new URL("./src/lib/", import.meta.url);
+const jszipPath = new URL("./node_modules/jszip/dist/jszip.min.js", import.meta.url);
 const generatedJsPath = new URL("./src/admin.js", import.meta.url);
 const outPath = new URL("./admin.html", import.meta.url);
 const docsDir = new URL("./docs/", import.meta.url);
@@ -64,10 +65,11 @@ const SHARED_UTILITY_MODULES = Object.freeze({
   }
 });
 
-const [html, css, jsFiles] = await Promise.all([
+const [html, css, jsFiles, jszipSrc] = await Promise.all([
   readFile(htmlPath, "utf8"),
   readFile(cssPath, "utf8"),
-  readdir(jsDir)
+  readdir(jsDir),
+  readFile(jszipPath, "utf8")
 ]);
 
 function exportedNames(source) {
@@ -168,6 +170,7 @@ await writeFile(generatedJsPath, transformed.code.trim() + "\n", "utf8");
 // Prevent literal closing script tags inside JavaScript strings/comments from
 // terminating the inline script element in the built single-file admin.
 const js = transformed.code.replaceAll("</script", "<\\/script");
+const jszip = jszipSrc.replaceAll("</script", "<\\/script");
 
 const built = html
   .replace(
@@ -176,7 +179,7 @@ const built = html
   )
   .replace(
     /<script\s+src=["']\.\/admin\.js["']\s+defer\s*><\/script>/i,
-    () => `<script>\n${js.trim()}\n</script>`
+    () => `<script>\n${jszip.trim()}\n</script>\n<script>\n${js.trim()}\n</script>`
   );
 
 if (built.includes('href="./admin.css"') || built.includes("href='./admin.css'")) {
