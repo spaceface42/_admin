@@ -1,0 +1,12 @@
+[
+  {
+    "id": "hero",
+    "file": "docs/index.html",
+    "label": "Hero Section"
+  },
+  {
+    "id": "intro",
+    "file": "docs/partials/partial.html",
+    "label": "Introduction"
+  }
+]

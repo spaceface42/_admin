@@ -688,7 +688,7 @@ function attrGet(attrs, name) {
   return m ? m[1] : '';
 }
 function fragmentIdFromAttrs(attrs, fallback = '') {
-  return attrGet(attrs, 'data-fragment') || attrGet(attrs, 'id') || fallback;
+  return attrGet(attrs, 'data-fragment') || fallback;
 }
 function findTagEnd(src, start) {
   let quote = null;
@@ -742,13 +742,6 @@ function findMatchingClose(block, tagName, from) {
 }
 function markerEndRegex(id) {
   return new RegExp(`<!--\\s*cms:end\\s+${reEsc(id)}\\s*-->`, 'i');
-}
-function classHasFragment(attrs) {
-  const m = String(attrs || '').match(/class\s*=\s*["']([^"']*)["']/i);
-  return m ? /\bfragment\b/.test(m[1]) : false;
-}
-function attrsDeclareFragment(attrs) {
-  return !!attrGet(attrs, 'data-fragment') || classHasFragment(attrs);
 }
 function findMarkedFragments(content, wantedId = null) {
   const out = [];
@@ -882,8 +875,7 @@ const FragmentParser = Object.freeze({
   extractMarkedFragment,
   replaceMarkedFragment,
   validateMarkers,
-  rebuildMarkedFragmentFromParts,
-  attrsDeclareFragment
+  rebuildMarkedFragmentFromParts
 });
   return FragmentParser;
 })();
@@ -1480,7 +1472,7 @@ function settingsChanged(current, next) {
 
 /* ---------- fragment parsing ---------- */
 /*
-  Preferred fragment format:
+  Fragment format:
 
     <!-- cms:start hero -->
     <section data-fragment="hero" data-label="Hero Section" class="hero">
@@ -1491,15 +1483,10 @@ function settingsChanged(current, next) {
   The comments define the safe replacement boundary.
   data-fragment/data-label describe the editable fragment.
 
-  Backward compatibility remains for:
-    <section id="hero" class="fragment">...</section>
-    <section data-fragment="hero">...</section>
-
   Parser source of truth:
   Marker parsing and parser helpers live in src/lib/fragment-parser.mjs and are
   generated into the browser as FragmentParser.
 */
-const SECTION_RE = /(<section\s([^>]*)>)([\s\S]*?)<\/section>/gi;
 
 function fragmentLabelFor(id, attrs) {
   const manEntry = state.manifest && state.manifest.find((e) => e.id === id);
@@ -1507,12 +1494,11 @@ function fragmentLabelFor(id, attrs) {
 }
 
 function rebuildFragment(f) {
-  return `${f.openTag}${f.innerHTML}${f.closeTag || '</section>'}`;
+  return `${f.openTag}${f.innerHTML}${f.closeTag}`;
 }
 
 /* Parse a file's content into fragment objects, registering them on
-   the canonical file record. Marker fragments are preferred; old section
-   fragments remain supported as fallback. */
+   the canonical file record. */
 function parseFileFragments(fileRec) {
   validateMarkersInFile(fileRec);
   const ids = [];
@@ -1542,40 +1528,10 @@ function parseFileFragments(fileRec) {
     ids.push(id);
   }
 
-  // Backward-compatible parser: <section class="fragment"> or data-fragment.
-  SECTION_RE.lastIndex = 0;
-  let m;
-  while ((m = SECTION_RE.exec(fileRec.content))) {
-    const openTag = m[1];
-    const attrs = m[2];
-    if (!FragmentParser.attrsDeclareFragment(attrs)) continue;
-
-    const id = FragmentParser.fragmentIdFromAttrs(attrs);
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-
-    const inner = m[3];
-    const f = {
-      id,
-      markerId: null,
-      mode: 'section',
-      classes: FragmentParser.attrGet(attrs, 'class'),
-      label: fragmentLabelFor(id, attrs),
-      path: fileRec.path,
-      file: fileRec.path.split('/').pop(),
-      openTag,
-      closeTag: '</section>',
-      innerHTML: inner,
-      origHTML: inner,
-      dirty: false
-    };
-    state.frags.set(id, f);
-    ids.push(id);
-  }
-
   fileRec.fragments = ids;
   return ids;
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
 
 /* ---------- path/media wrapper helpers ---------- */
 // Thin browser wrappers around Paths/config helpers.
@@ -2611,27 +2567,7 @@ function commitErrMsg(e) {
 /* Replace a single fragment in file content. Throw if it cannot be
    located, so the UI cannot report a successful commit when nothing changed. */
 function replaceFragment(content, frag) {
-  // Preferred replacement: marker boundary. This safely handles nested sections
-  // because the editable range is defined by cms:start/cms:end comments.
-  if (frag.mode === 'marker' || frag.markerId) {
-    return FragmentParser.replaceMarkedFragment(content, frag.markerId || frag.id, frag.innerHTML);
-  }
-
-  // Backward-compatible fallback for old section-based fragments.
-  let matched = false;
-  const out = content.replace(SECTION_RE, (whole, openTag, attrs, inner) => {
-    if (matched) return whole;
-    const id = FragmentParser.fragmentIdFromAttrs(attrs);
-    if (id === frag.id && FragmentParser.attrsDeclareFragment(attrs)) {
-      matched = true;
-      return rebuildFragment(frag);
-    }
-    return whole;
-  });
-  if (!matched) {
-    throw new Error(`Fragment not found in file: ${frag.id}`);
-  }
-  return out;
+  return FragmentParser.replaceMarkedFragment(content, frag.markerId || frag.id, frag.innerHTML);
 }
 
 async function commitManifest(msg) {
@@ -2657,6 +2593,7 @@ async function commitManifest(msg) {
   Store.clearContentTree();
   state.manifest = updated;
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
 
 /* Generated from src/lib/editor-utils.mjs. Do not edit this virtual browser module. */
 const EditorUtils = (() => {

@@ -72,12 +72,8 @@ test('fragment parser browser files delegate to shared FragmentParser', () => {
 
   assert.match(fragments, /FragmentParser\.findMarkedFragments/);
   assert.match(fragments, /FragmentParser\.attrGet/);
-  assert.match(fragments, /FragmentParser\.attrsDeclareFragment/);
-  assert.match(fragments, /FragmentParser\.fragmentIdFromAttrs/);
 
   assert.match(commit, /FragmentParser\.replaceMarkedFragment/);
-  assert.match(commit, /FragmentParser\.fragmentIdFromAttrs/);
-  assert.match(commit, /FragmentParser\.attrsDeclareFragment/);
 
   for (const source of [fragments, commit]) {
     assert.doesNotMatch(source, /function reEsc\b/);
@@ -86,6 +82,7 @@ test('fragment parser browser files delegate to shared FragmentParser', () => {
     assert.doesNotMatch(source, /function findMatchingClose\b/);
     assert.doesNotMatch(source, /function attrGet\b/);
     assert.doesNotMatch(source, /function classHasFragment\b/);
+    assert.doesNotMatch(source, /function attrsDeclareFragment\b/);
     assert.doesNotMatch(source, /function extractMarkedFragment\b/);
     assert.doesNotMatch(source, /function rebuildMarkedFragmentFromParts\b/);
   }

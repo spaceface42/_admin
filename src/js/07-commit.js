@@ -115,27 +115,7 @@ function commitErrMsg(e) {
 /* Replace a single fragment in file content. Throw if it cannot be
    located, so the UI cannot report a successful commit when nothing changed. */
 function replaceFragment(content, frag) {
-  // Preferred replacement: marker boundary. This safely handles nested sections
-  // because the editable range is defined by cms:start/cms:end comments.
-  if (frag.mode === 'marker' || frag.markerId) {
-    return FragmentParser.replaceMarkedFragment(content, frag.markerId || frag.id, frag.innerHTML);
-  }
-
-  // Backward-compatible fallback for old section-based fragments.
-  let matched = false;
-  const out = content.replace(SECTION_RE, (whole, openTag, attrs, inner) => {
-    if (matched) return whole;
-    const id = FragmentParser.fragmentIdFromAttrs(attrs);
-    if (id === frag.id && FragmentParser.attrsDeclareFragment(attrs)) {
-      matched = true;
-      return rebuildFragment(frag);
-    }
-    return whole;
-  });
-  if (!matched) {
-    throw new Error(`Fragment not found in file: ${frag.id}`);
-  }
-  return out;
+  return FragmentParser.replaceMarkedFragment(content, frag.markerId || frag.id, frag.innerHTML);
 }
 
 async function commitManifest(msg) {

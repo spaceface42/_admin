@@ -9,7 +9,7 @@ function attrGet(attrs, name) {
   return m ? m[1] : '';
 }
 function fragmentIdFromAttrs(attrs, fallback = '') {
-  return attrGet(attrs, 'data-fragment') || attrGet(attrs, 'id') || fallback;
+  return attrGet(attrs, 'data-fragment') || fallback;
 }
 function findTagEnd(src, start) {
   let quote = null;
@@ -63,13 +63,6 @@ function findMatchingClose(block, tagName, from) {
 }
 function markerEndRegex(id) {
   return new RegExp(`<!--\\s*cms:end\\s+${reEsc(id)}\\s*-->`, 'i');
-}
-function classHasFragment(attrs) {
-  const m = String(attrs || '').match(/class\s*=\s*["']([^"']*)["']/i);
-  return m ? /\bfragment\b/.test(m[1]) : false;
-}
-function attrsDeclareFragment(attrs) {
-  return !!attrGet(attrs, 'data-fragment') || classHasFragment(attrs);
 }
 function findMarkedFragments(content, wantedId = null) {
   const out = [];
@@ -203,6 +196,5 @@ export const FragmentParser = Object.freeze({
   extractMarkedFragment,
   replaceMarkedFragment,
   validateMarkers,
-  rebuildMarkedFragmentFromParts,
-  attrsDeclareFragment
+  rebuildMarkedFragmentFromParts
 });
