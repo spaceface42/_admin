@@ -347,7 +347,7 @@ const LS_REPO = 'gitcms_repo',
 // The GitHub token is kept in sessionStorage only and cleared when the browser
 // session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.60';
+const GITCMS_VERSION = '1.1.63-login-copy-fix';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -4639,6 +4639,29 @@ if (typeof renderEditorSnippetControls === 'function') {
 
 /* ---------- backup / restore ---------- */
 
+function isSafeBackupPath(path) {
+  const p = String(path || '')
+    .replace(/\\/g, '/')
+    .trim();
+  if (!p) return false;
+  if (p.startsWith('/')) return false;
+  if (/^[A-Za-z]:\//.test(p)) return false;
+  const parts = p.split('/').filter(Boolean);
+  if (parts.includes('..')) return false;
+  if (parts.includes('.git')) return false;
+  return true;
+}
+
+function isRestorableBackupPath(path, mediaDirPath) {
+  const mediaRoot = String(mediaDirPath || '').replace(/\/+$/, '');
+  return (
+    /\.html?$/i.test(path) ||
+    path === state.manifestPath ||
+    path === CONFIG_PATH ||
+    (mediaRoot && path.startsWith(mediaRoot + '/'))
+  );
+}
+
 el('backupBtn').onclick = () => {
   el('backupRestoreErr').textContent = '';
   el('backupRestoreErr').classList.remove('show');
@@ -4680,7 +4703,7 @@ async function downloadBackup() {
       'metadata.json',
       JSON.stringify(
         {
-          version: '1.1.61',
+          version: '1.1.63-login-copy-fix',
           repo: `${state.owner}/${state.repo}`,
           branch: state.workBranch,
           commitSha: snapshot.commitSha || '',
@@ -4737,7 +4760,18 @@ async function restoreBackup(file) {
     if (!metaFile) throw new Error('Not a valid GitCMS backup — metadata.json missing.');
 
     const meta = JSON.parse(await metaFile.async('string'));
-    const paths = (meta.files || Object.keys(zip.files)).filter((k) => k !== 'metadata.json' && !k.endsWith('/'));
+    if (!Array.isArray(meta.files)) {
+      throw new Error('Not a valid GitCMS backup — metadata.files must be an array.');
+    }
+    const mdir = mediaDir();
+    const paths = meta.files
+      .map((p) => String(p || '').trim())
+      .filter((p) => p && p !== 'metadata.json' && !p.endsWith('/'));
+    for (const path of paths) {
+      if (!isSafeBackupPath(path) || !isRestorableBackupPath(path, mdir)) {
+        throw new Error(`Backup contains an unsupported path: ${path}`);
+      }
+    }
 
     btn.textContent = `Restoring 0/${paths.length}…`;
 
@@ -4747,9 +4781,7 @@ async function restoreBackup(file) {
       if (!entry) continue;
 
       const isText = /\.(html?|json|css|js|txt|md|svg)$/i.test(path);
-      const content = isText
-        ? enc(await entry.async('string'))
-        : await entry.async('base64');
+      const content = isText ? enc(await entry.async('string')) : await entry.async('base64');
 
       let sha = null;
       try {

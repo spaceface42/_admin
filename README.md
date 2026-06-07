@@ -5,7 +5,7 @@ A zero-backend GitHub CMS admin for editing HTML fragments in a separate content
 Current version:
 
 ```txt
-1.1.59-format-fix
+1.1.63-login-copy-fix
 ```
 
 ---

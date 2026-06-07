@@ -53,8 +53,8 @@
           <div class="hint">
             Use a <b>fine-grained PAT</b> scoped to the content/site repo with
             <b>Contents: Read &amp; write</b>. A classic <span class="mono">repo</span>-scoped token
-            works but can write to <i>every</i> repo you own. Stored in localStorage (base64 —
-            obfuscation, not encryption).
+            works but can write to <i>every</i> repo you own. Stored in sessionStorage for the
+            current browser session. Older localStorage tokens are migrated once and removed.
           </div>
         </div>
         <button class="btn" id="connectBtn">Connect</button>
@@ -527,8 +527,11 @@
     <div class="modal-bg" id="backupModal">
       <div class="modal">
         <h3>Backup &amp; Restore</h3>
-        <p class="mdesc">Download a ZIP of all content branch files, or restore from a previously downloaded backup.</p>
-        <div class="modal-row" style="margin-bottom:12px">
+        <p class="mdesc">
+          Download a ZIP of all content branch files, or restore from a previously downloaded
+          backup.
+        </p>
+        <div class="modal-row" style="margin-bottom: 12px">
           <button class="tbtn pub" id="backupDownloadBtn">Download ZIP</button>
         </div>
         <div class="field">
