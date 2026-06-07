@@ -23,6 +23,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify docs admin output
+        run: test -s docs/admin.html
+
       - name: Syntax check
         run: npm run check
 

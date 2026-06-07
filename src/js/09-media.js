@@ -101,6 +101,7 @@ async function saveConfig(){
     gitcmsConfigLoaded=true;
     state.manifestPath=newManifestPath;
     updateBranchLabels();
+    renderEditorSnippetControls();
     updateMediaDirNote();
 
     el('settingsModal').classList.remove('show');

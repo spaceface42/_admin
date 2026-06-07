@@ -124,16 +124,21 @@
             <div class="pane-head">
               <div class="snippet-bar">
                 <span>Inner HTML</span>
-                <button class="snippet-btn" type="button" data-snippet="p">P</button>
-                <button class="snippet-btn" type="button" data-snippet="h2">H2</button>
-                <button class="snippet-btn" type="button" data-snippet="lede">Lede</button>
-                <button class="snippet-btn" type="button" data-snippet="button">Button</button>
-                <button class="snippet-btn" type="button" data-snippet="list">List</button>
-                <button class="snippet-btn" type="button" data-snippet="card">Card</button>
+                <span class="quick-snippets" id="quickSnippetButtons"></span>
+                <button class="snippet-btn help-toggle" type="button" id="editorHelpToggle">Help</button>
               </div>
               <span class="wrapinfo" id="wrapInfo"></span>
             </div>
             <textarea id="htmlArea" spellcheck="false"></textarea>
+            <details class="editor-help" id="editorHelp">
+              <summary>HTML help / snippets</summary>
+              <div class="editor-help-body">
+                <div class="help-snippet-grid" id="editorSnippetGrid"></div>
+                <div class="editor-help-note">
+                  Select text before clicking a snippet to wrap/use it. Inserted HTML is still raw and fully editable.
+                </div>
+              </div>
+            </details>
           </div>
           <div class="pane">
             <div class="pane-head">

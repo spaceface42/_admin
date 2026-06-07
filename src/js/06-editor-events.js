@@ -12,8 +12,17 @@ el('previewPageBtn').onclick=()=>{
 };
 
 
-document.querySelectorAll('[data-snippet]').forEach(btn=>{
-  btn.addEventListener('click',()=>insertHtmlSnippet(btn.dataset.snippet));
+el('editorPane').addEventListener('click',event=>{
+  const snippetBtn=event.target.closest('[data-snippet]');
+  if(snippetBtn && el('editorPane').contains(snippetBtn)){
+    insertHtmlSnippet(snippetBtn.dataset.snippet);
+    return;
+  }
+
+  if(event.target.closest('#editorHelpToggle')){
+    const panel=el('editorHelp');
+    panel.open=!panel.open;
+  }
 });
 
 el('htmlArea').addEventListener('input',()=>{

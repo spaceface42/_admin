@@ -1,10 +1,12 @@
-import { readFile, writeFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir } from "node:fs/promises";
 
 const htmlPath = new URL("./src/index.html", import.meta.url);
 const cssPath = new URL("./src/admin.css", import.meta.url);
 const jsDir = new URL("./src/js/", import.meta.url);
 const generatedJsPath = new URL("./src/admin.js", import.meta.url);
 const outPath = new URL("./admin.html", import.meta.url);
+const docsDir = new URL("./docs/", import.meta.url);
+const docsOutPath = new URL("./docs/admin.html", import.meta.url);
 
 const [html, css, jsFiles] = await Promise.all([
   readFile(htmlPath, "utf8"),
@@ -41,5 +43,7 @@ const built = html
   .replace('<script src="./admin.js" defer></script>', () => `<script>\n${js.trim()}\n</script>`);
 
 await writeFile(outPath, built + "\n", "utf8");
+await mkdir(docsDir, { recursive: true });
+await writeFile(docsOutPath, built + "\n", "utf8");
 
-console.log(`Built admin.html from ${orderedJsFiles.length} JS modules`);
+console.log(`Built admin.html and docs/admin.html from ${orderedJsFiles.length} JS modules`);

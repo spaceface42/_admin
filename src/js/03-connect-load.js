@@ -38,6 +38,7 @@ async function connect(){
     el('repoBadgeTxt').textContent=`${state.owner}/${state.repo}`;
     el('repoBadge').title='Content/site repository: '+`${state.owner}/${state.repo}`;
     updateBranchLabels();
+    renderEditorSnippetControls();
 
     await loadAll();
   }catch(e){
