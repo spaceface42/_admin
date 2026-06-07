@@ -54,12 +54,13 @@ const ContentSourceUtils = (() => {
     };
   }
 
-  function buildContentTreeSnapshot({ branch, commitSha, treeSha, source, treeResponse }) {
+  function buildContentTreeSnapshot({ branch, commitSha, treeSha, source, treeResponse, treeLoaded = true }) {
     return {
       branch,
       commitSha,
       treeSha,
       source,
+      treeLoaded,
       tree: treeResponse && Array.isArray(treeResponse.tree) ? treeResponse.tree : []
     };
   }

@@ -30,7 +30,6 @@ async function connect() {
 
     // From here on, content/work branch is the only CMS source tree.
     Store.clearContentTree();
-    await GitHubApi.getBranchTreeSnapshot(state.workBranch, { force: true });
 
     const branchCfg = await loadGitCMSConfig(true, [state.workBranch]);
     applyConfig(branchCfg);
@@ -125,24 +124,57 @@ async function ensureWorkBranch() {
   toast(`Created ${state.workBranch} branch from ${sourceBranch}`, 'ok');
 }
 
-/* FIX #2 + hardening: read the manifest from BOTH branches.
-   Returns the work-branch manifest if present, with default-branch fallback. */
-async function loadManifest() {
+async function resolveContentLoadSource({ preferLastWrite = true } = {}) {
+  const resolved = await GitHubApi.resolveBranchCommitForRead(state.workBranch, {
+    preferLastWrite
+  });
+  const commit = await GitHubApi.getGitCommit(resolved.commitSha);
+  const treeSha = commit && commit.tree ? commit.tree.sha : 'not loaded';
+
+  const snapshot = {
+    branch: state.workBranch,
+    commitSha: resolved.commitSha,
+    treeSha,
+    source: `${resolved.source} · manifest-first`,
+    tree: [],
+    treeLoaded: false
+  };
+
+  Store.setContentTree(snapshot);
+  return snapshot;
+}
+
+async function readContentFileAtRef(path, ref) {
+  const r = await GitHubApi.getContent(path, ref);
+  return {
+    path,
+    content: dec(r.content),
+    src: state.workBranch,
+    shaMain: null,
+    shaDraft: r.sha,
+    fragments: []
+  };
+}
+
+/* Strict CMS source of truth: read the manifest from the content/work branch only.
+   Manifest-first mode reads this via the Contents API at the resolved commit SHA,
+   so it does not need a recursive tree scan. */
+async function loadManifest(sourceRef) {
   async function read(ref) {
     try {
-      const r = await GitHubApi.getFile(state.manifestPath, ref);
+      const r = await GitHubApi.getContent(state.manifestPath, ref);
       let parsed = null;
       try {
         parsed = JSON.parse(dec(r.content));
       } catch (parseErr) {
         addValidation(
           'manifest',
-          `${state.manifestPath} on ${ref}: invalid JSON — ${parseErr.message}`
+          `${state.manifestPath} on ${state.workBranch}: invalid JSON — ${parseErr.message}`
         );
         return null;
       }
       state.validation.manifest.push(
-        ...validateManifestEntries(parsed, `${state.manifestPath} on ${ref}`)
+        ...validateManifestEntries(parsed, `${state.manifestPath} on ${state.workBranch}`)
       );
       return Array.isArray(parsed) ? parsed : null;
     } catch (e) {
@@ -151,24 +183,13 @@ async function loadManifest() {
     }
   }
 
-  // Strict CMS source of truth: content/work branch only.
-  // Do not silently load fragments from main/default, because that can show stale
-  // live content in the admin after saves or publish operations.
-  const workMan = await read(state.workBranch);
+  const workMan = await read(sourceRef || state.workBranch);
   return { workMan, defaultMan: null };
 }
 
-async function fetchFile(path) {
+async function fetchFile(path, sourceRef = state.workBranch) {
   try {
-    const r = await GitHubApi.getFile(path, state.workBranch);
-    return {
-      path,
-      content: dec(r.content),
-      src: state.workBranch,
-      shaMain: null,
-      shaDraft: r.sha,
-      fragments: []
-    };
+    return await readContentFileAtRef(path, sourceRef);
   } catch (e) {
     if (e.status === 404) return null;
     throw e;
@@ -180,18 +201,18 @@ async function loadAll() {
   setStatus('Loading…', true);
   Store.clearLoadedContent();
   Store.clearContentTree();
-  await GitHubApi.getBranchTreeSnapshot(state.workBranch, { force: true });
   el('banner').classList.remove('show');
   el('divergeBanner').classList.remove('show');
 
   try {
-    const { workMan, defaultMan } = await loadManifest();
+    const source = await resolveContentLoadSource();
+    const { workMan, defaultMan } = await loadManifest(source.commitSha);
 
     // Strict source of truth: load only from the content/work branch.
     // Never fall back to main/default for editable source files.
     let used = null;
     if (workMan) {
-      const result = await tryLoadFromManifest(workMan);
+      const result = await tryLoadFromManifest(workMan, source.commitSha);
       if (result.count > 0) {
         used = { manifest: workMan, from: state.workBranch };
       } else {
@@ -248,12 +269,12 @@ async function loadAll() {
 }
 
 /* Load files referenced by a manifest; returns {count}. Does NOT clear state. */
-async function tryLoadFromManifest(manifest) {
+async function tryLoadFromManifest(manifest, sourceRef = state.workBranch) {
   state.manifest = manifest; // so parseFileFragments can read labels
   const paths = [...new Set(manifest.map((e) => e.file))];
   const recs = await Promise.all(
     paths.map((p) =>
-      fetchFile(p).catch((e) => {
+      fetchFile(p, sourceRef).catch((e) => {
         console.warn('fetch skip', p, e);
         return null;
       })
@@ -275,14 +296,14 @@ async function tryLoadFromManifest(manifest) {
 async function tryTreeScan() {
   state.manifest = null;
 
-  const snapshot = await GitHubApi.getBranchTreeSnapshot(state.workBranch);
+  const snapshot = await GitHubApi.getBranchTreeSnapshot(state.workBranch, { force: true });
   const paths = (snapshot.tree || [])
     .filter((n) => n.type === 'blob' && /\.html?$/i.test(n.path))
     .map((n) => n.path);
 
   const recs = await Promise.all(
     paths.map((p) =>
-      fetchFile(p).catch((e) => {
+      fetchFile(p, sourceRef).catch((e) => {
         console.warn('scan skip', p, e);
         return null;
       })

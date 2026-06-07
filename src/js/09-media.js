@@ -12,7 +12,7 @@ async function loadGitCMSConfig(force = false, refs = null) {
   const refsToTry = refs || [state.workBranch, state.defaultBranch];
   for (const ref of refsToTry) {
     try {
-      const r = await GitHubApi.getFile(CONFIG_PATH, ref);
+      const r = await GitHubApi.getContent(CONFIG_PATH, ref);
       let parsed = null;
       try {
         parsed = JSON.parse(dec(r.content));
@@ -259,7 +259,7 @@ async function loadMediaThumb(item, slot, attempt = 0) {
       slot.textContent = 'large file';
       return;
     }
-    const r = await GitHubApi.getFile(item.path, state.workBranch);
+    const r = await GitHubApi.getContent(item.path, state.workBranch);
     const img = document.createElement('img');
     img.className = 'media-thumb';
     img.alt = item.name;

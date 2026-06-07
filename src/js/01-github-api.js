@@ -157,7 +157,8 @@ const GitHubApi = Object.freeze({
       commitSha,
       treeSha,
       source,
-      treeResponse: tree
+      treeResponse: tree,
+      treeLoaded: true
     });
     Store.setContentTree(snapshot);
     return snapshot;
