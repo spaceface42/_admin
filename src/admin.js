@@ -347,7 +347,7 @@ const LS_REPO = 'gitcms_repo',
 // The GitHub token is kept in sessionStorage only and cleared when the browser
 // session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.88';
+const GITCMS_VERSION = '1.1.89-named-snapshots';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -4780,7 +4780,7 @@ async function downloadBackup() {
       'metadata.json',
       JSON.stringify(
         {
-          version: '1.1.88',
+          version: '1.1.89-named-snapshots',
           repo: `${state.owner}/${state.repo}`,
           branch: state.workBranch,
           commitSha: snapshot.commitSha || '',
@@ -5107,7 +5107,7 @@ function ensureSnapshotHistoryModal() {
   modal.className = 'modal-bg';
   modal.id = 'snapshotHistoryModal';
   modal.innerHTML = `
-    <div class="modal wide">
+    <div class="modal media-modal">
       <h3>Snapshot history</h3>
       <p class="muted">
         Snapshot tags are created after publishing. Rollback moves both content and main to the
@@ -5392,13 +5392,12 @@ async function snapshotHistoryRollback(tag) {
     await GitHubApi.updateRef(state.workBranch, tag.sha, { force: true });
     await GitHubApi.updateRef(state.defaultBranch, tag.sha, { force: true });
 
-    snapshotHistorySetWarn('Rollback complete.<br>Refreshing editor from rollback commit…');
+    snapshotHistorySetWarn('Rollback complete. Refreshing editor from rollback commit…');
     toast('Rolled back to ' + tag.name, 'ok');
 
     await snapshotHistoryRefreshEditorAfterRollback(tag);
 
-    snapshotHistorySetWarn(`Rollback complete.
-Both content and main now point to ${esc(tag.name)}.`);
+    snapshotHistorySetWarn('Rollback complete. Both content and main now point to ' + esc(tag.name) + '.');
     await snapshotHistoryRefresh();
   } catch (e) {
     snapshotHistorySetWarn('');

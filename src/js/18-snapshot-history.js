@@ -212,7 +212,7 @@ function ensureSnapshotHistoryModal() {
   modal.className = 'modal-bg';
   modal.id = 'snapshotHistoryModal';
   modal.innerHTML = `
-    <div class="modal wide">
+    <div class="modal media-modal">
       <h3>Snapshot history</h3>
       <p class="muted">
         Snapshot tags are created after publishing. Rollback moves both content and main to the
@@ -497,13 +497,12 @@ async function snapshotHistoryRollback(tag) {
     await GitHubApi.updateRef(state.workBranch, tag.sha, { force: true });
     await GitHubApi.updateRef(state.defaultBranch, tag.sha, { force: true });
 
-    snapshotHistorySetWarn('Rollback complete.<br>Refreshing editor from rollback commit…');
+    snapshotHistorySetWarn('Rollback complete. Refreshing editor from rollback commit…');
     toast('Rolled back to ' + tag.name, 'ok');
 
     await snapshotHistoryRefreshEditorAfterRollback(tag);
 
-    snapshotHistorySetWarn(`Rollback complete.
-Both content and main now point to ${esc(tag.name)}.`);
+    snapshotHistorySetWarn('Rollback complete. Both content and main now point to ' + esc(tag.name) + '.');
     await snapshotHistoryRefresh();
   } catch (e) {
     snapshotHistorySetWarn('');
