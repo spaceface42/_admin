@@ -1,3 +1,17 @@
+async function syncSnapshotRegistryAfterSnapshotCreate() {
+  try {
+    if (
+      window.GitCMSSnapshotRegistry &&
+      typeof window.GitCMSSnapshotRegistry.syncAfterSnapshotCreate === 'function'
+    ) {
+      await window.GitCMSSnapshotRegistry.syncAfterSnapshotCreate();
+      await syncSnapshotRegistryAfterSnapshotCreate();
+    }
+  } catch (e) {
+    console.warn('Snapshot registry sync hook failed', e);
+  }
+}
+
 /* ---------- publish ---------- */
 const SNAPSHOT_TAG_PREFIX = 'snapshot-';
 

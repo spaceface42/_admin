@@ -1,6 +1,6 @@
 # GitCMS Admin
 
-Current version: `1.1.89-named-snapshots`.
+Current version: `1.1.92-snapshot-create-registry-sync`.
 
 Zero-backend CMS for HTML-native static sites. The admin is a static browser app that edits fragments in a separate GitHub content repository through the GitHub API.
 
@@ -158,3 +158,31 @@ Rename behavior:
 - Empty rename clears the custom display name.
 
 Snapshot names are trimmed, plain text only, and limited to 80 characters.
+
+### Snapshot registry synchronization
+
+Named snapshots use a synchronized registry stored at:
+
+```txt
+.gitcms/snapshots.json
+```
+
+The registry lives on the internal `gitcms-metadata` branch. Git tag names stay unchanged.
+
+The live `snapshot-*` Git tags remain the source of truth for whether a snapshot exists. The registry stores display metadata for those tags: name, SHA, raw SHA, object type, created date, updated date, and future note/export fields.
+
+History refresh reconciles the registry against live Git tags:
+
+- new `snapshot-*` tags are added to `.gitcms/snapshots.json`
+- deleted tags are removed from `.gitcms/snapshots.json`
+- renamed snapshots update only their registry entry
+- rollback never edits the registry branch
+- delete removes the Git tag and the registry entry
+
+The `gitcms-metadata` branch is metadata-only and should contain only `.gitcms/snapshots.json`.
+
+### Publish-time snapshot registry sync
+
+When publish creates a new `snapshot-*` Git tag, the admin immediately synchronizes the snapshot registry in `.gitcms/snapshots.json` on the `gitcms-metadata` branch.
+
+History refresh still performs full reconciliation, so if publish-time registry sync fails because of a transient GitHub/API/cache issue, opening History later adds missing tags and removes stale deleted tags.

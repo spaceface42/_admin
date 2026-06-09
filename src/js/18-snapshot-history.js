@@ -75,6 +75,7 @@ function snapshotHistoryNumberTags(tags) {
 function snapshotHistoryEmptyMetadata() {
   return {
     version: 1,
+    updatedAt: '',
     snapshots: {}
   };
 }
@@ -83,18 +84,31 @@ function snapshotHistoryNormalizeMetadata(raw) {
   const out = snapshotHistoryEmptyMetadata();
   if (!raw || typeof raw !== 'object') return out;
 
+  out.updatedAt = String(raw.updatedAt || '');
+
   const snapshots = raw.snapshots && typeof raw.snapshots === 'object' ? raw.snapshots : {};
   for (const [tagName, entry] of Object.entries(snapshots)) {
-    if (!tagName || !entry || typeof entry !== 'object') continue;
+    if (!tagName || !String(tagName).startsWith(SNAPSHOT_HISTORY_PREFIX)) continue;
 
-    const name = snapshotHistoryNormalizeName(entry.name || '');
-    const note = String(entry.note || '');
-    const updatedAt = String(entry.updatedAt || '');
+    const source = entry && typeof entry === 'object' ? entry : {};
+    const tag = String(source.tag || tagName);
+    if (!tag.startsWith(SNAPSHOT_HISTORY_PREFIX)) continue;
 
-    if (!name && !note && !updatedAt) continue;
+    const name = snapshotHistoryNormalizeName(source.name || '');
+    const note = String(source.note || '').trim();
+    const sha = String(source.sha || '');
+    const rawSha = String(source.rawSha || '');
+    const type = String(source.type || 'commit');
+    const createdAt = String(source.createdAt || snapshotHistoryTagCreatedAt(tag) || '');
+    const updatedAt = String(source.updatedAt || '');
 
-    out.snapshots[tagName] = {
+    out.snapshots[tag] = {
+      tag,
       ...(name ? { name } : {}),
+      ...(sha ? { sha } : {}),
+      ...(rawSha ? { rawSha } : {}),
+      ...(type ? { type } : {}),
+      ...(createdAt ? { createdAt } : {}),
       ...(note ? { note } : {}),
       ...(updatedAt ? { updatedAt } : {})
     };
@@ -107,6 +121,7 @@ function snapshotHistoryNormalizeName(name) {
   return String(name || '').trim().slice(0, SNAPSHOT_NAME_MAX_LENGTH);
 }
 
+
 function snapshotHistoryMetadataEntry(metadata, tagName) {
   const meta = snapshotHistoryNormalizeMetadata(metadata);
   return meta.snapshots[tagName] || {};
@@ -114,6 +129,139 @@ function snapshotHistoryMetadataEntry(metadata, tagName) {
 
 function snapshotHistoryDisplayName(tag, metadata) {
   return snapshotHistoryNormalizeName(snapshotHistoryMetadataEntry(metadata, tag.name).name || '');
+}
+
+function snapshotHistoryTagCreatedAt(name) {
+  const d = snapshotHistoryParseDate(name);
+  if (!d) return '';
+  return d.year + '-' + d.month + '-' + d.day + 'T' + d.hour + ':' + d.minute + ':' + d.second + '.000Z';
+}
+
+function snapshotHistoryRegistryEntry(tag, existing = {}) {
+  const tagName = tag && tag.name ? tag.name : String(existing.tag || '');
+  const name = snapshotHistoryNormalizeName(existing.name || '');
+  const note = String(existing.note || '').trim();
+  const sha = String((tag && tag.sha) || existing.sha || '');
+  const rawSha = String((tag && tag.rawSha) || existing.rawSha || '');
+  const type = String((tag && tag.type) || existing.type || 'commit');
+  const createdAt = String(existing.createdAt || snapshotHistoryTagCreatedAt(tagName) || '');
+  const updatedAt = String(existing.updatedAt || '');
+
+  return {
+    tag: tagName,
+    ...(name ? { name } : {}),
+    ...(sha ? { sha } : {}),
+    ...(rawSha ? { rawSha } : {}),
+    ...(type ? { type } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    ...(note ? { note } : {}),
+    ...(updatedAt ? { updatedAt } : {})
+  };
+}
+
+function snapshotHistoryEntriesEqual(a, b) {
+  return JSON.stringify(a || {}) === JSON.stringify(b || {});
+}
+
+function snapshotHistoryReconcileMetadata(tags, metadata) {
+  const current = snapshotHistoryNormalizeMetadata(metadata);
+  const next = snapshotHistoryEmptyMetadata();
+  const liveTags = new Set();
+  let changed = false;
+
+  for (const tag of Array.isArray(tags) ? tags : []) {
+    if (!tag || !tag.name || !tag.name.startsWith(SNAPSHOT_HISTORY_PREFIX)) continue;
+
+    liveTags.add(tag.name);
+    const existing = current.snapshots[tag.name] || {};
+    const entry = snapshotHistoryRegistryEntry(tag, existing);
+    next.snapshots[tag.name] = entry;
+
+    if (!snapshotHistoryEntriesEqual(existing, entry)) changed = true;
+  }
+
+  for (const oldTag of Object.keys(current.snapshots)) {
+    if (!liveTags.has(oldTag)) changed = true;
+  }
+
+  next.updatedAt = changed ? new Date().toISOString() : current.updatedAt || '';
+  return { metadata: next, changed };
+}
+
+async function snapshotHistoryLoadSyncedMetadata(tags) {
+  const metadataState = await snapshotHistoryLoadMetadata();
+  const synced = snapshotHistoryReconcileMetadata(tags, metadataState.metadata);
+
+  if (synced.changed) {
+    await snapshotHistorySaveMetadata(metadataState, synced.metadata);
+  }
+
+  return {
+    ...metadataState,
+    metadata: synced.metadata,
+    warning:
+      metadataState.warning ||
+      (synced.changed ? 'Snapshot registry synchronized with live Git tags.' : '')
+  };
+}
+
+function snapshotHistoryRemoveSnapshot(metadata, tagName) {
+  const next = snapshotHistoryNormalizeMetadata(metadata);
+  if (next.snapshots[tagName]) {
+    delete next.snapshots[tagName];
+    next.updatedAt = new Date().toISOString();
+  }
+  return next;
+}
+
+
+async function snapshotHistoryCreateMetadataOnlyBranch() {
+  const content = JSON.stringify(snapshotHistoryEmptyMetadata(), null, 2) + '\n';
+
+  const blob = await GitHubApi.request(GitHubApi.repoPath('/git/blobs'), {
+    method: 'POST',
+    body: {
+      content: enc(content),
+      encoding: 'base64'
+    }
+  });
+
+  const tree = await GitHubApi.request(GitHubApi.repoPath('/git/trees'), {
+    method: 'POST',
+    body: {
+      tree: [
+        {
+          path: SNAPSHOT_METADATA_PATH,
+          mode: '100644',
+          type: 'blob',
+          sha: blob.sha
+        }
+      ]
+    }
+  });
+
+  const commit = await GitHubApi.request(GitHubApi.repoPath('/git/commits'), {
+    method: 'POST',
+    body: {
+      message: 'cms: initialize snapshot registry',
+      tree: tree.sha
+    }
+  });
+
+  try {
+    await GitHubApi.request(GitHubApi.repoPath('/git/refs'), {
+      method: 'POST',
+      body: {
+        ref: 'refs/heads/' + SNAPSHOT_METADATA_BRANCH,
+        sha: commit.sha
+      }
+    });
+  } catch (e) {
+    // Race-safe: another browser/session may have created it after our 404.
+    if (!e || e.status !== 422) throw e;
+  }
+
+  return SNAPSHOT_METADATA_BRANCH;
 }
 
 async function snapshotHistoryEnsureMetadataBranch() {
@@ -124,22 +272,7 @@ async function snapshotHistoryEnsureMetadataBranch() {
     if (!e || e.status !== 404) throw e;
   }
 
-  const sourceBranch = state.workBranch || state.defaultBranch || DEFAULT_WORK_BRANCH;
-  const sourceRef = await GitHubApi.getRef(sourceBranch);
-  const sourceSha = sourceRef && sourceRef.object && sourceRef.object.sha ? sourceRef.object.sha : '';
-
-  if (!sourceSha) {
-    throw new Error('Could not create snapshot metadata branch: source branch SHA is missing.');
-  }
-
-  try {
-    await GitHubApi.createBranchFromSha(SNAPSHOT_METADATA_BRANCH, sourceSha);
-  } catch (e) {
-    // Race-safe: another browser/session may have created it after our 404.
-    if (!e || e.status !== 422) throw e;
-  }
-
-  return SNAPSHOT_METADATA_BRANCH;
+  return snapshotHistoryCreateMetadataOnlyBranch();
 }
 
 async function snapshotHistoryLoadMetadata() {
@@ -177,6 +310,7 @@ async function snapshotHistoryLoadMetadata() {
 
 async function snapshotHistorySaveMetadata(metadataState, metadata) {
   const clean = snapshotHistoryNormalizeMetadata(metadata);
+  clean.updatedAt = clean.updatedAt || new Date().toISOString();
   const content = JSON.stringify(clean, null, 2) + '\n';
   const branch =
     metadataState && metadataState.branch ? metadataState.branch : await snapshotHistoryEnsureMetadataBranch();
@@ -199,25 +333,28 @@ function snapshotHistoryValidateName(name) {
   return clean;
 }
 
-function snapshotHistorySetSnapshotName(metadata, tagName, name) {
+function snapshotHistorySetSnapshotName(metadata, tagOrName, name) {
+  const tag = typeof tagOrName === 'string' ? { name: tagOrName } : tagOrName;
+  const tagName = tag && tag.name ? tag.name : '';
   const clean = snapshotHistoryValidateName(name);
   const next = snapshotHistoryNormalizeMetadata(metadata);
   const existing = next.snapshots[tagName] || {};
+  const base = snapshotHistoryRegistryEntry(tag, existing);
   const note = String(existing.note || '').trim();
 
-  if (!clean && !note) {
-    delete next.snapshots[tagName];
-    return next;
-  }
-
   next.snapshots[tagName] = {
+    ...base,
     ...(clean ? { name: clean } : {}),
     ...(note ? { note } : {}),
     updatedAt: new Date().toISOString()
   };
 
+  if (!clean) delete next.snapshots[tagName].name;
+  next.updatedAt = new Date().toISOString();
+
   return next;
 }
+
 
 function ensureSnapshotHistoryButton() {
   let btn = document.getElementById('snapshotHistoryBtn');
@@ -252,7 +389,7 @@ function ensureSnapshotHistoryModal() {
         selected snapshot commit. Rollback does not create a new snapshot tag.
       </p>
       <p class="muted">
-        Custom snapshot names are stored in <code>${esc(SNAPSHOT_METADATA_PATH)}</code> on the <code>${esc(SNAPSHOT_METADATA_BRANCH)}</code> metadata branch. Git tag names stay unchanged.
+        Snapshot registry metadata is stored in <code>${esc(SNAPSHOT_METADATA_PATH)}</code> on the <code>${esc(SNAPSHOT_METADATA_BRANCH)}</code> metadata branch. Git tag names stay unchanged.
       </p>
       <div class="err" id="snapshotHistoryErr"></div>
       <div class="warn" id="snapshotHistoryWarn"></div>
@@ -344,11 +481,13 @@ async function snapshotHistoryRename(tag) {
   }
 
   snapshotHistorySetErr('');
-  snapshotHistorySetWarn('Loading snapshot name metadata…');
+  snapshotHistorySetWarn('Loading snapshot registry…');
 
   try {
-    const metadataState = await snapshotHistoryLoadMetadata();
-    const currentName = snapshotHistoryDisplayName(tag, metadataState.metadata);
+    const tags = await snapshotHistoryListTags();
+    const liveTag = tags.find((candidate) => candidate.name === tag.name) || tag;
+    const metadataState = await snapshotHistoryLoadSyncedMetadata(tags);
+    const currentName = snapshotHistoryDisplayName(liveTag, metadataState.metadata);
     const nextName = window.prompt(
       'Snapshot name. Leave empty to clear the custom name.',
       currentName || ''
@@ -359,10 +498,9 @@ async function snapshotHistoryRename(tag) {
       return;
     }
 
-    const nextMetadata = snapshotHistorySetSnapshotName(metadataState.metadata, tag.name, nextName);
-    snapshotHistorySetWarn('Saving snapshot name…');
+    const nextMetadata = snapshotHistorySetSnapshotName(metadataState.metadata, liveTag, nextName);
+    snapshotHistorySetWarn('Saving snapshot registry…');
     await snapshotHistorySaveMetadata(metadataState, nextMetadata);
-
     toast('Snapshot name saved', 'ok');
     await snapshotHistoryRefresh();
   } catch (e) {
@@ -378,7 +516,6 @@ async function snapshotHistoryRename(tag) {
 
 async function snapshotHistoryDelete(tag) {
   if (!snapshotHistoryRequireConnection()) return;
-
   if (!tag || !tag.name || !tag.name.startsWith(SNAPSHOT_HISTORY_PREFIX)) {
     snapshotHistorySetErr('Only snapshot-* tags can be deleted here.');
     return;
@@ -387,7 +524,7 @@ async function snapshotHistoryDelete(tag) {
   const ok = confirm(
     'Delete snapshot tag ' +
       tag.name +
-      '?\n\nThis deletes only the Git tag.\nIt does not change content or main.'
+      '?\n\nThis deletes only the Git tag and its snapshot registry entry.\nIt does not change content or main.'
   );
   if (!ok) return;
 
@@ -398,6 +535,17 @@ async function snapshotHistoryDelete(tag) {
     await GitHubApi.request(GitHubApi.repoPath('/git/refs/tags/' + encodeURIComponent(tag.name)), {
       method: 'DELETE'
     });
+
+    try {
+      const metadataState = await snapshotHistoryLoadMetadata();
+      const nextMetadata = snapshotHistoryRemoveSnapshot(metadataState.metadata, tag.name);
+      await snapshotHistorySaveMetadata(metadataState, nextMetadata);
+    } catch (metadataError) {
+      console.warn('Snapshot tag deleted, but registry cleanup failed', metadataError);
+      snapshotHistorySetWarn(
+        'Snapshot tag deleted, but registry cleanup failed. Refresh History to reconcile.'
+      );
+    }
 
     toast('Deleted snapshot ' + tag.name, 'ok');
     await snapshotHistoryRefresh();
@@ -458,6 +606,23 @@ function snapshotHistoryRender(tags, metadata = snapshotHistoryEmptyMetadata()) 
   }
 }
 
+async function snapshotHistorySyncRegistry() {
+  if (!snapshotHistoryConnected()) return null;
+
+  const tags = await snapshotHistoryListTags();
+  return snapshotHistoryLoadSyncedMetadata(tags);
+}
+
+async function snapshotHistorySyncRegistryAfterSnapshotCreate() {
+  try {
+    await snapshotHistorySyncRegistry();
+  } catch (e) {
+    // Snapshot creation must not fail because registry metadata sync failed.
+    // Opening History later will reconcile the registry against live snapshot tags.
+    console.warn('Snapshot registry sync after snapshot creation failed', e);
+  }
+}
+
 async function snapshotHistoryRefresh() {
   ensureSnapshotHistoryModal();
   snapshotHistorySetErr('');
@@ -466,10 +631,8 @@ async function snapshotHistoryRefresh() {
   snapshotHistorySetWarn('Loading snapshot tags…');
 
   try {
-    const [tags, metadataState] = await Promise.all([
-      snapshotHistoryListTags(),
-      snapshotHistoryLoadMetadata()
-    ]);
+    const tags = await snapshotHistoryListTags();
+    const metadataState = await snapshotHistoryLoadSyncedMetadata(tags);
 
     snapshotHistorySetWarn(
       (metadataState.warning ? esc(metadataState.warning) + '<br>' : '') +
@@ -582,6 +745,11 @@ function snapshotHistoryClickHandler(event) {
   event.stopPropagation();
   openSnapshotHistory();
 }
+
+window.GitCMSSnapshotRegistry = Object.freeze({
+  sync: snapshotHistorySyncRegistry,
+  syncAfterSnapshotCreate: snapshotHistorySyncRegistryAfterSnapshotCreate
+});
 
 window.openSnapshotHistory = openSnapshotHistory;
 

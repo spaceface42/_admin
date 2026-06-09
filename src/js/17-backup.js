@@ -64,7 +64,7 @@ async function downloadBackup() {
       'metadata.json',
       JSON.stringify(
         {
-          version: '1.1.89-named-snapshots',
+          version: '1.1.92-snapshot-create-registry-sync',
           repo: `${state.owner}/${state.repo}`,
           branch: state.workBranch,
           commitSha: snapshot.commitSha || '',
