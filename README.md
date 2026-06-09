@@ -129,6 +129,8 @@ Version target: `v1.1.89-named-snapshots`.
 
 Snapshot names are human-facing metadata. Git tag names stay unchanged.
 
+Snapshot-name metadata is stored on the separate `gitcms-metadata` branch, not on `content` or `main`. This prevents rollback from erasing `.gitcms/snapshots.json` when the selected snapshot commit predates the metadata file.
+
 Names are stored in the administered content repository at:
 
 ```txt

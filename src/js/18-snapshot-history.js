@@ -1,6 +1,7 @@
 /* ---------- snapshot history / rollback ---------- */
 const SNAPSHOT_HISTORY_PREFIX = 'snapshot-';
 const SNAPSHOT_METADATA_PATH = '.gitcms/snapshots.json';
+const SNAPSHOT_METADATA_BRANCH = 'gitcms-metadata';
 const SNAPSHOT_NAME_MAX_LENGTH = 80;
 
 function snapshotHistoryConnected() {
@@ -115,13 +116,43 @@ function snapshotHistoryDisplayName(tag, metadata) {
   return snapshotHistoryNormalizeName(snapshotHistoryMetadataEntry(metadata, tag.name).name || '');
 }
 
-async function snapshotHistoryLoadMetadata() {
+async function snapshotHistoryEnsureMetadataBranch() {
   try {
-    const file = await GitHubApi.getFileForWrite(SNAPSHOT_METADATA_PATH, state.workBranch);
+    await GitHubApi.getRef(SNAPSHOT_METADATA_BRANCH);
+    return SNAPSHOT_METADATA_BRANCH;
+  } catch (e) {
+    if (!e || e.status !== 404) throw e;
+  }
+
+  const sourceBranch = state.workBranch || state.defaultBranch || DEFAULT_WORK_BRANCH;
+  const sourceRef = await GitHubApi.getRef(sourceBranch);
+  const sourceSha = sourceRef && sourceRef.object && sourceRef.object.sha ? sourceRef.object.sha : '';
+
+  if (!sourceSha) {
+    throw new Error('Could not create snapshot metadata branch: source branch SHA is missing.');
+  }
+
+  try {
+    await GitHubApi.createBranchFromSha(SNAPSHOT_METADATA_BRANCH, sourceSha);
+  } catch (e) {
+    // Race-safe: another browser/session may have created it after our 404.
+    if (!e || e.status !== 422) throw e;
+  }
+
+  return SNAPSHOT_METADATA_BRANCH;
+}
+
+async function snapshotHistoryLoadMetadata() {
+  let branch = SNAPSHOT_METADATA_BRANCH;
+
+  try {
+    branch = await snapshotHistoryEnsureMetadataBranch();
+    const file = await GitHubApi.getFileForWrite(SNAPSHOT_METADATA_PATH, branch);
     const parsed = JSON.parse(dec(file.content));
     return {
       metadata: snapshotHistoryNormalizeMetadata(parsed),
       sha: file.sha || null,
+      branch,
       warning: ''
     };
   } catch (e) {
@@ -129,6 +160,7 @@ async function snapshotHistoryLoadMetadata() {
       return {
         metadata: snapshotHistoryEmptyMetadata(),
         sha: null,
+        branch,
         warning: ''
       };
     }
@@ -137,6 +169,7 @@ async function snapshotHistoryLoadMetadata() {
     return {
       metadata: snapshotHistoryEmptyMetadata(),
       sha: null,
+      branch,
       warning: 'Snapshot names metadata could not be read. Showing tag/date fallback names.'
     };
   }
@@ -145,15 +178,15 @@ async function snapshotHistoryLoadMetadata() {
 async function snapshotHistorySaveMetadata(metadataState, metadata) {
   const clean = snapshotHistoryNormalizeMetadata(metadata);
   const content = JSON.stringify(clean, null, 2) + '\n';
+  const branch =
+    metadataState && metadataState.branch ? metadataState.branch : await snapshotHistoryEnsureMetadataBranch();
 
   await GitHubApi.saveFile(SNAPSHOT_METADATA_PATH, {
     message: 'cms: update snapshot names',
     content: enc(content),
-    branch: state.workBranch,
+    branch,
     sha: metadataState && metadataState.sha ? metadataState.sha : null
   });
-
-  Store.clearContentTree();
 }
 
 function snapshotHistoryValidateName(name) {
@@ -219,8 +252,7 @@ function ensureSnapshotHistoryModal() {
         selected snapshot commit. Rollback does not create a new snapshot tag.
       </p>
       <p class="muted">
-        Custom snapshot names are stored in <code>${esc(SNAPSHOT_METADATA_PATH)}</code> on
-        <code>${esc(state.workBranch || DEFAULT_WORK_BRANCH)}</code>. Git tag names stay unchanged.
+        Custom snapshot names are stored in <code>${esc(SNAPSHOT_METADATA_PATH)}</code> on the <code>${esc(SNAPSHOT_METADATA_BRANCH)}</code> metadata branch. Git tag names stay unchanged.
       </p>
       <div class="err" id="snapshotHistoryErr"></div>
       <div class="warn" id="snapshotHistoryWarn"></div>

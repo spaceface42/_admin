@@ -7,6 +7,7 @@ test('snapshot history stores human-readable names as metadata, not tag renames'
 
   assert.match(js, /const SNAPSHOT_METADATA_PATH = '\.gitcms\/snapshots\.json'/);
   assert.match(js, /function snapshotHistoryDisplayName\(tag, metadata\)/);
+  assert.match(js, /async function snapshotHistoryEnsureMetadataBranch\(\)/);
   assert.match(js, /async function snapshotHistoryLoadMetadata\(\)/);
   assert.match(js, /async function snapshotHistorySaveMetadata\(metadataState, metadata\)/);
   assert.match(js, /async function snapshotHistoryRename\(tag\)/);
@@ -15,7 +16,7 @@ test('snapshot history stores human-readable names as metadata, not tag renames'
   assert.match(js, /Git tag names stay unchanged/);
 });
 
-test('snapshot rename commits only snapshots.json on the work branch', () => {
+test('snapshot rename commits only snapshots.json on the metadata branch', () => {
   const js = readFileSync(new URL('../src/js/18-snapshot-history.js', import.meta.url), 'utf8');
 
   const renameStart = js.indexOf('async function snapshotHistoryRename');
@@ -43,4 +44,16 @@ test('README documents named snapshots', () => {
   assert.match(readme, /Named snapshots/);
   assert.match(readme, /\.gitcms\/snapshots\.json/);
   assert.match(readme, /Git tag names stay unchanged/);
+});
+
+
+test('snapshot names are isolated from rollback-controlled content branches', () => {
+  const js = readFileSync(new URL('../src/js/18-snapshot-history.js', import.meta.url), 'utf8');
+  const loadStart = js.indexOf('async function snapshotHistoryLoadMetadata');
+  const saveEnd = js.indexOf('function snapshotHistoryValidateName', loadStart);
+  const metadataBody = js.slice(loadStart, saveEnd);
+
+  assert.match(metadataBody, /SNAPSHOT_METADATA_BRANCH/);
+  assert.doesNotMatch(metadataBody, /state\.workBranch\)/);
+  assert.match(js, /gitcms-metadata/);
 });
