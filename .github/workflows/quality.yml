@@ -27,7 +27,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Verify docs index output
+      - name: Verify docs admin output
         run: test -s docs/index.html
 
       - name: Syntax check
