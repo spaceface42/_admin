@@ -8,7 +8,7 @@ const jszipPath = new URL("./node_modules/jszip/dist/jszip.min.js", import.meta.
 const generatedJsPath = new URL("./src/admin.js", import.meta.url);
 const outPath = new URL("./admin.html", import.meta.url);
 const docsDir = new URL("./docs/", import.meta.url);
-const docsOutPath = new URL("./docs/admin.html", import.meta.url);
+const docsOutPath = new URL("./docs/index.html", import.meta.url);
 
 const SHARED_UTILITY_MODULES = Object.freeze({
   "00-api-utils.js": {
@@ -195,6 +195,6 @@ await mkdir(docsDir, { recursive: true });
 await writeFile(docsOutPath, built + "\n", "utf8");
 
 console.log(
-  `Built admin.html and docs/admin.html from ${orderedJsFiles.length} JS modules` +
+  `Built admin.html and docs/index.html from ${orderedJsFiles.length} JS modules` +
     (transformed.usedEsbuild ? " using esbuild" : " using fallback transform")
 );

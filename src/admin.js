@@ -347,7 +347,7 @@ const LS_REPO = 'gitcms_repo',
 // The GitHub token is kept in sessionStorage only and cleared when the browser
 // session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.87-snapshot-history-numbering';
+const GITCMS_VERSION = '1.1.88';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -4694,14 +4694,18 @@ window.addEventListener('beforeunload', (e) => {
 
 /* ---------- prefill ---------- */
 (function init() {
-  const r = localStorage.getItem(LS_REPO),
-    t = TokenStorage.read();
-  if (r) el('repoUrl').value = r;
-  if (t) {
+  const repo = localStorage.getItem(LS_REPO);
+  const token = TokenStorage.read();
+
+  if (repo) el('repoUrl').value = repo;
+  if (token) {
     try {
-      el('token').value = dec(t);
+      el('token').value = dec(token);
     } catch (e) {}
   }
+
+  // Keep repository/token prefill convenient, but require an explicit Connect click.
+  // This avoids silently opening a repo with a restored session token on shared machines.
 })();
 
 // Render default editor snippets after all modules, including EditorUtils, are initialized.
@@ -4776,7 +4780,7 @@ async function downloadBackup() {
       'metadata.json',
       JSON.stringify(
         {
-          version: '1.1.87-snapshot-history-numbering',
+          version: '1.1.88',
           repo: `${state.owner}/${state.repo}`,
           branch: state.workBranch,
           commitSha: snapshot.commitSha || '',

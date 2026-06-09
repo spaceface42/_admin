@@ -1,6 +1,6 @@
 {
   "name": "gitcms-admin",
-  "version": "1.1.87-snapshot-history-numbering",
+  "version": "1.1.88",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "lint": "eslint src/js/**/*.js src/lib/**/*.mjs tests/**/*.mjs build-admin.mjs",
     "format": "prettier --write src/**/*.js src/**/*.mjs src/**/*.css src/**/*.html tests/**/*.mjs *.md",
     "format:check": "prettier --check src/**/*.js src/**/*.mjs src/**/*.css src/**/*.html tests/**/*.mjs *.md",
-    "quality": "npm run build && npm run check && npm test",
+    "quality": "npm run build && npm run check && npm test && npm run format:check && npm run lint",
     "test:smoke": "playwright test"
   },
   "devDependencies": {

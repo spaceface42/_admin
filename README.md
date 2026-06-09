@@ -1,48 +1,75 @@
 # GitCMS Admin
 
-A zero-backend CMS for HTML-native static sites. No server, no database, no framework — one HTML file talking directly to the GitHub API from your browser.
+Current version: `1.1.88`.
 
----
+Zero-backend CMS for HTML-native static sites. The admin is a static browser app that edits fragments in a separate GitHub content repository through the GitHub API.
 
-## What makes it different
-
-Most git-based CMSes treat **files** as content units — one markdown file, one page. GitCMS treats **fragments** as the unit: multiple named, editable regions inside a single HTML file. Your HTML is the source of truth, not generated from markdown.
-
-- **Zero infrastructure.** Drop `docs/index.html` on any GitHub Pages repo and you're done.
-- **Fragment-first.** Edit named HTML regions inline — headings, paragraphs, image alt text — without touching the surrounding markup.
-- **Two-branch workflow.** Edits land on the `content` branch. Publishing merges to `main`. Nothing goes live until you say so.
-- **Snapshot history.** Every publish creates a `snapshot-YYYY-MM-DD-HHMMSS` Git tag. One click to roll back both branches to any previous state.
-- **Token in sessionStorage.** The GitHub PAT is validated on connect and cleared when the browser session ends. No server needed to keep it safe from the session.
-
----
-
-## How it works
+## Repo model
 
 ```txt
-_admin repo     → hosts the CMS admin (this repo, built to docs/index.html)
-_site repo      → your content/site repository
-  content branch  = CMS editing source of truth
-  main branch     = live published site
+_admin = CMS/admin repository
+_site   = administered content/site repository
+
+content = editing
+main    = live published
 ```
 
-Connect with a GitHub repo URL and a personal access token. GitCMS resolves the config, creates the `content` branch if it doesn't exist, loads fragments from `fragments.json`, and you start editing.
+Edits are saved to the configured work branch, normally `content`. Publishing moves the approved content to `main`. The admin repository is separate from the administered site repository.
 
----
+## Security model
 
-## Getting started
+- Use a fine-grained GitHub PAT scoped only to the administered content/site repo.
+- The repository URL is stored in `localStorage` for convenience.
+- The GitHub token is stored only in `sessionStorage` and is cleared when the browser session ends.
+- Saved values may be prefilled, but GitCMS does not auto-connect. Press **Connect** explicitly.
+
+## Build
 
 ```bash
-npm install
+npm ci
 npm run build
 ```
 
-Open `admin.html` locally, or serve `docs/index.html` via GitHub Pages.
+## Test
 
----
+```bash
+npm run check
+npm test
+npm run format:check
+npm run lint
+npm run quality
+npm run test:smoke
+```
 
-## Config
+`npm run test:smoke` requires Chromium for Playwright:
 
-Add `gitcms.config.json` to your content repo:
+```bash
+npx playwright install chromium
+```
+
+## Source layout
+
+```txt
+src/index.html        admin shell
+src/admin.css         admin styles
+src/js/               browser app modules, numbered by load order
+src/lib/*.mjs         shared utility modules used by browser build and tests
+tests/                Node unit/regression tests
+smoke/                Playwright browser smoke tests
+scripts/              build support scripts
+docs/                 GitHub Pages build output
+```
+
+## Build output
+
+```txt
+admin.html            standalone local admin
+docs/index.html       GitHub Pages hosted admin
+```
+
+## Content repo config
+
+Add `gitcms.config.json` to the administered content/site repo:
 
 ```json
 {
@@ -58,60 +85,6 @@ Add `gitcms.config.json` to your content repo:
 }
 ```
 
----
+## Fragment model
 
-## Editor snippets
-
-```json
-{
-  "editor": {
-    "snippets": [
-      {
-        "id": "alert",
-        "label": "Alert box",
-        "hint": "<div class=\"alert\">",
-        "quick": true,
-        "html": "<div class=\"alert\">\n  <p>{{text|Alert text}}</p>\n</div>"
-      }
-    ]
-  }
-}
-```
-
-Placeholder syntax: `{{text|Fallback}}`, `{{attr:text|Fallback}}`, `{{items|A\nB}}`
-
----
-
-## Tests
-
-```bash
-npm test          # unit/source tests
-npm run check     # syntax check
-npm run quality   # build + check + test
-npm run test:smoke  # Playwright browser tests (requires: npx playwright install chromium)
-```
-
----
-
-## Source layout
-
-```txt
-src/index.html        admin shell
-src/admin.css         styles
-src/js/               browser app modules (numbered load order)
-src/lib/              shared utility modules (tested independently)
-tests/                Node unit tests
-smoke/                Playwright smoke tests
-docs/                 GitHub Pages build output
-```
-
----
-
-## Build output
-
-```txt
-admin.html          standalone local admin
-docs/index.html     GitHub Pages hosted admin
-```
-
-Built with esbuild. CSS and JS are inlined into a single self-contained HTML file.
+GitCMS treats named HTML fragments as the editable unit. Your HTML remains the source of truth; markdown generation is not required.

@@ -32,6 +32,6 @@ test('README documents the current repo model and build output', () => {
 
   assert.match(readme, /content = editing/);
   assert.match(readme, /main\s+= live published/);
-  assert.match(readme, /docs\/admin\.html/);
+  assert.match(readme, /docs\/index\.html/);
   assert.match(readme, /src\/lib\/\*\.mjs/);
 });

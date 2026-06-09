@@ -1,15 +1,17 @@
-/* ---------- prefill + auto-connect ---------- */
+/* ---------- prefill ---------- */
 (function init() {
-  const r = localStorage.getItem(LS_REPO),
-    t = TokenStorage.read();
-  if (r) el('repoUrl').value = r;
-  if (t) {
+  const repo = localStorage.getItem(LS_REPO);
+  const token = TokenStorage.read();
+
+  if (repo) el('repoUrl').value = repo;
+  if (token) {
     try {
-      el('token').value = dec(t);
+      el('token').value = dec(token);
     } catch (e) {}
   }
-  // If both repo and token are already known, skip the login screen entirely.
-  if (r && t) connect();
+
+  // Keep repository/token prefill convenient, but require an explicit Connect click.
+  // This avoids silently opening a repo with a restored session token on shared machines.
 })();
 
 // Render default editor snippets after all modules, including EditorUtils, are initialized.

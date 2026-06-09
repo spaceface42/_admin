@@ -17,7 +17,7 @@ test('quality workflow keeps build output verification and quality steps', () =>
   );
 
   assert.match(workflow, /npm run build/);
-  assert.match(workflow, /test -s docs\/admin\.html/);
+  assert.match(workflow, /test -s docs\/index\.html/);
   assert.match(workflow, /npm run format:check/);
   assert.match(workflow, /npm run lint/);
 });
