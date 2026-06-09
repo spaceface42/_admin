@@ -1,6 +1,6 @@
 # GitCMS Admin
 
-Current version: `1.1.88-readme-runtime-notes-fix`.
+Current version: `1.1.93-snapshot-publish-title`.
 
 Zero-backend CMS for HTML-native static sites. The admin is a static browser app that edits fragments in a separate GitHub content repository through the GitHub API.
 
@@ -122,3 +122,33 @@ Rollback does not create pre-rollback safety snapshots. snapshots represent publ
 ## Docs output test rule
 
 The build script writes the standalone local artifact to `admin.html` and writes the GitHub Pages hosted artifact to `docs/index.html`. The quality workflow verifies `docs/index.html` after `npm run build`.
+
+## Snapshot publish titles
+
+Version target: `1.1.93-snapshot-publish-title`.
+
+Snapshot titles are immutable and are chosen only during publish.
+
+When publish creates a snapshot tag, the admin asks for an optional title. The title is converted into a safe slug and appended to the Git tag name:
+
+```txt
+snapshot-YYYY-MM-DD-HHMMSS--safe-title
+```
+
+Example:
+
+```txt
+Title typed during publish:
+Homepage approved before client review
+
+Created tag:
+snapshot-2026-06-09-144500--homepage-approved-before-client-review
+```
+
+If the title is empty or the prompt is cancelled, the admin creates the normal date-only tag:
+
+```txt
+snapshot-2026-06-09-144500
+```
+
+This feature deliberately has no rename action, no metadata branch, and no snapshots JSON registry. Rollback and delete continue to target the immutable Git tag name.

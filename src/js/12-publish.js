@@ -1,3 +1,41 @@
+const SNAPSHOT_PUBLISH_TITLE_MAX_LENGTH = 80;
+
+function snapshotPublishTitleSlug(input) {
+  return String(input || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, SNAPSHOT_PUBLISH_TITLE_MAX_LENGTH)
+    .replace(/-+$/g, '');
+}
+
+function snapshotPublishTimestamp(date = new Date()) {
+  return date
+    .toISOString()
+    .replace(/\.\d{3}Z$/, '')
+    .replace('T', '-')
+    .replace(/:/g, '');
+}
+
+function snapshotPublishTagName(title = '') {
+  const slug = snapshotPublishTitleSlug(title);
+  const timestamp = snapshotPublishTimestamp();
+  return 'snapshot-' + timestamp + (slug ? '--' + slug : '');
+}
+
+function snapshotPublishPromptTitle() {
+  if (typeof window === 'undefined' || typeof window.prompt !== 'function') return '';
+
+  const title = window.prompt(
+    'Optional snapshot title for History.\n\nLeave empty for a date-only snapshot tag.',
+    ''
+  );
+
+  return title === null ? '' : title;
+}
+
 /* ---------- publish ---------- */
 const SNAPSHOT_TAG_PREFIX = 'snapshot-';
 
@@ -24,30 +62,17 @@ function snapshotTagName(date = new Date()) {
 }
 
 async function createSnapshotTagForPublish(sha) {
-  if (!sha) throw new Error('Cannot create snapshot without a published commit SHA.');
-  let lastError = null;
+  const tagName = snapshotPublishTagName(snapshotPublishPromptTitle());
 
-  for (let i = 0; i < 5; i++) {
-    const base = snapshotTagName();
-    const tagName = i === 0 ? base : base + '-' + (i + 1);
-
-    try {
-      await GitHubApi.request(GitHubApi.repoPath('/git/refs'), {
-        method: 'POST',
-        body: {
-          ref: 'refs/tags/' + tagName,
-          sha
-        }
-      });
-      return tagName;
-    } catch (e) {
-      lastError = e;
-      if (e.status !== 422) throw e;
-      await sleep(1000);
+  await GitHubApi.request(GitHubApi.repoPath('/git/refs'), {
+    method: 'POST',
+    body: {
+      ref: 'refs/tags/' + tagName,
+      sha
     }
-  }
+  });
 
-  throw lastError || new Error('Could not create snapshot tag.');
+  return tagName;
 }
 
 async function createSnapshotAfterPublishResult(publishResult) {

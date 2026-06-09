@@ -347,7 +347,7 @@ const LS_REPO = 'gitcms_repo',
 // The GitHub token is kept in sessionStorage only and cleared when the browser
 // session ends. Older localStorage tokens are migrated once and removed.
 const API = 'https://api.github.com';
-const GITCMS_VERSION = '1.1.88';
+const GITCMS_VERSION = '1.1.93-snapshot-publish-title';
 const CONFIG_PATH = 'gitcms.config.json';
 const DEFAULT_MEDIA_DIR = 'assets/media';
 const DEFAULT_MANIFEST_PATH = 'fragments.json';
@@ -3885,6 +3885,44 @@ function adminVersionStatus({ currentVersion, expectedVersion }) {
   });
 })();
 
+const SNAPSHOT_PUBLISH_TITLE_MAX_LENGTH = 80;
+
+function snapshotPublishTitleSlug(input) {
+  return String(input || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, SNAPSHOT_PUBLISH_TITLE_MAX_LENGTH)
+    .replace(/-+$/g, '');
+}
+
+function snapshotPublishTimestamp(date = new Date()) {
+  return date
+    .toISOString()
+    .replace(/\.\d{3}Z$/, '')
+    .replace('T', '-')
+    .replace(/:/g, '');
+}
+
+function snapshotPublishTagName(title = '') {
+  const slug = snapshotPublishTitleSlug(title);
+  const timestamp = snapshotPublishTimestamp();
+  return 'snapshot-' + timestamp + (slug ? '--' + slug : '');
+}
+
+function snapshotPublishPromptTitle() {
+  if (typeof window === 'undefined' || typeof window.prompt !== 'function') return '';
+
+  const title = window.prompt(
+    'Optional snapshot title for History.\n\nLeave empty for a date-only snapshot tag.',
+    ''
+  );
+
+  return title === null ? '' : title;
+}
+
 /* ---------- publish ---------- */
 const SNAPSHOT_TAG_PREFIX = 'snapshot-';
 
@@ -3911,30 +3949,17 @@ function snapshotTagName(date = new Date()) {
 }
 
 async function createSnapshotTagForPublish(sha) {
-  if (!sha) throw new Error('Cannot create snapshot without a published commit SHA.');
-  let lastError = null;
+  const tagName = snapshotPublishTagName(snapshotPublishPromptTitle());
 
-  for (let i = 0; i < 5; i++) {
-    const base = snapshotTagName();
-    const tagName = i === 0 ? base : base + '-' + (i + 1);
-
-    try {
-      await GitHubApi.request(GitHubApi.repoPath('/git/refs'), {
-        method: 'POST',
-        body: {
-          ref: 'refs/tags/' + tagName,
-          sha
-        }
-      });
-      return tagName;
-    } catch (e) {
-      lastError = e;
-      if (e.status !== 422) throw e;
-      await sleep(1000);
+  await GitHubApi.request(GitHubApi.repoPath('/git/refs'), {
+    method: 'POST',
+    body: {
+      ref: 'refs/tags/' + tagName,
+      sha
     }
-  }
+  });
 
-  throw lastError || new Error('Could not create snapshot tag.');
+  return tagName;
 }
 
 async function createSnapshotAfterPublishResult(publishResult) {
@@ -4780,7 +4805,7 @@ async function downloadBackup() {
       'metadata.json',
       JSON.stringify(
         {
-          version: '1.1.88',
+          version: '1.1.93-snapshot-publish-title',
           repo: `${state.owner}/${state.repo}`,
           branch: state.workBranch,
           commitSha: snapshot.commitSha || '',
@@ -4927,6 +4952,17 @@ function snapshotHistoryDisplayDate(name) {
   if (!d) return String(name || '');
 
   return d.year + '-' + d.month + '-' + d.day + ' ' + d.hour + ':' + d.minute + ':' + d.second;
+}
+
+function snapshotHistoryTitleFromName(name) {
+  const m = String(name || '').match(/^snapshot-\d{4}-\d{2}-\d{2}-\d{6}--(.+)$/);
+  if (!m) return '';
+  return m[1].split('-').filter(Boolean).join(' ').trim();
+}
+
+function snapshotHistoryTitleMarkup(name) {
+  const title = snapshotHistoryTitleFromName(name);
+  return title ? '<div class="snapshot-history-title">' + esc(title) + '</div>' : '';
 }
 
 function snapshotHistoryAccentHue(name) {
@@ -5145,6 +5181,7 @@ function snapshotHistoryRender(tags) {
       <div class="snapshot-history-head" style="display:flex;align-items:center;gap:10px;padding:8px 9px 2px">
         <div class="snapshot-history-number" style="min-width:34px;height:34px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);font-family:var(--mono);font-size:15px;font-weight:800;color:var(--txt)">${esc(String(snapshotNumber))}</div>
         <div class="media-name" style="font-size:15px;color:var(--txt);padding:0;border-top:0">${esc(snapshotHistoryDisplayDate(tag.name))}</div>
+          ${snapshotHistoryTitleMarkup(tag.name)}
       </div>
       <div class="media-path mono">${esc(tag.name)}</div>
       <div class="media-path mono">${esc(snapshotHistoryShortSha(tag.sha))}</div>

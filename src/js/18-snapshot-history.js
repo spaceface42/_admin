@@ -34,6 +34,17 @@ function snapshotHistoryDisplayDate(name) {
   return d.year + '-' + d.month + '-' + d.day + ' ' + d.hour + ':' + d.minute + ':' + d.second;
 }
 
+function snapshotHistoryTitleFromName(name) {
+  const m = String(name || '').match(/^snapshot-\d{4}-\d{2}-\d{2}-\d{6}--(.+)$/);
+  if (!m) return '';
+  return m[1].split('-').filter(Boolean).join(' ').trim();
+}
+
+function snapshotHistoryTitleMarkup(name) {
+  const title = snapshotHistoryTitleFromName(name);
+  return title ? '<div class="snapshot-history-title">' + esc(title) + '</div>' : '';
+}
+
 function snapshotHistoryAccentHue(name) {
   const d = snapshotHistoryParseDate(name);
   if (d) {
@@ -250,6 +261,7 @@ function snapshotHistoryRender(tags) {
       <div class="snapshot-history-head" style="display:flex;align-items:center;gap:10px;padding:8px 9px 2px">
         <div class="snapshot-history-number" style="min-width:34px;height:34px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);font-family:var(--mono);font-size:15px;font-weight:800;color:var(--txt)">${esc(String(snapshotNumber))}</div>
         <div class="media-name" style="font-size:15px;color:var(--txt);padding:0;border-top:0">${esc(snapshotHistoryDisplayDate(tag.name))}</div>
+          ${snapshotHistoryTitleMarkup(tag.name)}
       </div>
       <div class="media-path mono">${esc(tag.name)}</div>
       <div class="media-path mono">${esc(snapshotHistoryShortSha(tag.sha))}</div>
