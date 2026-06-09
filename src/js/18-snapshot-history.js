@@ -1,5 +1,7 @@
 /* ---------- snapshot history / rollback ---------- */
 const SNAPSHOT_HISTORY_PREFIX = 'snapshot-';
+const SNAPSHOT_METADATA_PATH = '.gitcms/snapshots.json';
+const SNAPSHOT_NAME_MAX_LENGTH = 80;
 
 function snapshotHistoryConnected() {
   return !!(state && state.owner && state.repo && state.token);
@@ -16,7 +18,6 @@ function snapshotHistoryShortSha(sha) {
 function snapshotHistoryParseDate(name) {
   const m = String(name || '').match(/^snapshot-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})/);
   if (!m) return null;
-
   return {
     year: m[1],
     month: m[2],
@@ -30,7 +31,6 @@ function snapshotHistoryParseDate(name) {
 function snapshotHistoryDisplayDate(name) {
   const d = snapshotHistoryParseDate(name);
   if (!d) return String(name || '');
-
   return d.year + '-' + d.month + '-' + d.day + ' ' + d.hour + ':' + d.minute + ':' + d.second;
 }
 
@@ -55,18 +55,135 @@ function snapshotHistoryApplyColor(card, tag) {
   const hue = snapshotHistoryAccentHue(tag.name);
   card.style.borderColor = 'hsl(' + hue + ' 70% 55% / 0.9)';
   card.style.background =
-    'linear-gradient(135deg, hsl(' + hue + ' 55% 18% / 0.88), hsl(' + hue + ' 40% 10% / 0.52))';
+    'linear-gradient(135deg, hsl(' +
+    hue +
+    ' 55% 18% / 0.88), hsl(' +
+    hue +
+    ' 40% 10% / 0.52))';
 }
 
 function snapshotHistoryNumberTags(tags) {
   const sortedOldestFirst = [...tags].sort((a, b) => a.name.localeCompare(b.name));
   const byName = new Map();
-
   sortedOldestFirst.forEach((tag, index) => {
     byName.set(tag.name, index + 1);
   });
-
   return byName;
+}
+
+function snapshotHistoryEmptyMetadata() {
+  return {
+    version: 1,
+    snapshots: {}
+  };
+}
+
+function snapshotHistoryNormalizeMetadata(raw) {
+  const out = snapshotHistoryEmptyMetadata();
+  if (!raw || typeof raw !== 'object') return out;
+
+  const snapshots = raw.snapshots && typeof raw.snapshots === 'object' ? raw.snapshots : {};
+  for (const [tagName, entry] of Object.entries(snapshots)) {
+    if (!tagName || !entry || typeof entry !== 'object') continue;
+
+    const name = snapshotHistoryNormalizeName(entry.name || '');
+    const note = String(entry.note || '');
+    const updatedAt = String(entry.updatedAt || '');
+
+    if (!name && !note && !updatedAt) continue;
+
+    out.snapshots[tagName] = {
+      ...(name ? { name } : {}),
+      ...(note ? { note } : {}),
+      ...(updatedAt ? { updatedAt } : {})
+    };
+  }
+
+  return out;
+}
+
+function snapshotHistoryNormalizeName(name) {
+  return String(name || '').trim().slice(0, SNAPSHOT_NAME_MAX_LENGTH);
+}
+
+function snapshotHistoryMetadataEntry(metadata, tagName) {
+  const meta = snapshotHistoryNormalizeMetadata(metadata);
+  return meta.snapshots[tagName] || {};
+}
+
+function snapshotHistoryDisplayName(tag, metadata) {
+  return snapshotHistoryNormalizeName(snapshotHistoryMetadataEntry(metadata, tag.name).name || '');
+}
+
+async function snapshotHistoryLoadMetadata() {
+  try {
+    const file = await GitHubApi.getFileForWrite(SNAPSHOT_METADATA_PATH, state.workBranch);
+    const parsed = JSON.parse(dec(file.content));
+    return {
+      metadata: snapshotHistoryNormalizeMetadata(parsed),
+      sha: file.sha || null,
+      warning: ''
+    };
+  } catch (e) {
+    if (e && e.status === 404) {
+      return {
+        metadata: snapshotHistoryEmptyMetadata(),
+        sha: null,
+        warning: ''
+      };
+    }
+
+    console.warn('Could not load snapshot metadata', e);
+    return {
+      metadata: snapshotHistoryEmptyMetadata(),
+      sha: null,
+      warning: 'Snapshot names metadata could not be read. Showing tag/date fallback names.'
+    };
+  }
+}
+
+async function snapshotHistorySaveMetadata(metadataState, metadata) {
+  const clean = snapshotHistoryNormalizeMetadata(metadata);
+  const content = JSON.stringify(clean, null, 2) + '\n';
+
+  await GitHubApi.saveFile(SNAPSHOT_METADATA_PATH, {
+    message: 'cms: update snapshot names',
+    content: enc(content),
+    branch: state.workBranch,
+    sha: metadataState && metadataState.sha ? metadataState.sha : null
+  });
+
+  Store.clearContentTree();
+}
+
+function snapshotHistoryValidateName(name) {
+  const clean = snapshotHistoryNormalizeName(name);
+
+  if (/[<>]/.test(clean)) {
+    throw new Error('Snapshot names must be plain text. Do not use HTML tags.');
+  }
+
+  return clean;
+}
+
+function snapshotHistorySetSnapshotName(metadata, tagName, name) {
+  const clean = snapshotHistoryValidateName(name);
+  const next = snapshotHistoryNormalizeMetadata(metadata);
+  const existing = next.snapshots[tagName] || {};
+  const note = String(existing.note || '').trim();
+
+  if (!clean && !note) {
+    delete next.snapshots[tagName];
+    return next;
+  }
+
+  next.snapshots[tagName] = {
+    ...(clean ? { name: clean } : {}),
+    ...(note ? { note } : {}),
+    updatedAt: new Date().toISOString()
+  };
+
+  return next;
 }
 
 function ensureSnapshotHistoryButton() {
@@ -82,14 +199,7 @@ function ensureSnapshotHistoryButton() {
   btn.title = 'List snapshot tags and rollback';
   btn.type = 'button';
   btn.setAttribute('onclick', 'openSnapshotHistory(); return false;');
-  btn.innerHTML = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M3 12a9 9 0 109-9" />
-      <path d="M3 3v6h6" />
-      <path d="M12 7v5l3 3" />
-    </svg>
-    History`;
-
+  btn.innerHTML = 'History';
   diagnosticsBtn.parentNode.insertBefore(btn, diagnosticsBtn);
   return btn;
 }
@@ -102,30 +212,29 @@ function ensureSnapshotHistoryModal() {
   modal.className = 'modal-bg';
   modal.id = 'snapshotHistoryModal';
   modal.innerHTML = `
-    <div class="modal media-modal">
+    <div class="modal wide">
       <h3>Snapshot history</h3>
-      <p class="mdesc">
-        Snapshot tags are created after publishing. Rollback moves both
-        <span class="mono">content</span> and <span class="mono">main</span>
-        to the selected snapshot commit. Rollback does not create a new snapshot tag.
+      <p class="muted">
+        Snapshot tags are created after publishing. Rollback moves both content and main to the
+        selected snapshot commit. Rollback does not create a new snapshot tag.
       </p>
-
-      <div class="modal-row" style="justify-content:flex-start;margin-bottom:12px">
-        <button class="tbtn ghost" type="button" id="snapshotHistoryRefreshBtn">
-          Refresh snapshots
-        </button>
+      <p class="muted">
+        Custom snapshot names are stored in <code>${esc(SNAPSHOT_METADATA_PATH)}</code> on
+        <code>${esc(state.workBranch || DEFAULT_WORK_BRANCH)}</code>. Git tag names stay unchanged.
+      </p>
+      <div class="err" id="snapshotHistoryErr"></div>
+      <div class="warn" id="snapshotHistoryWarn"></div>
+      <div class="row gap">
+        <button class="btn ghost" id="snapshotHistoryRefreshBtn" type="button">Refresh snapshots</button>
       </div>
-
-      <div class="modal-warn" id="snapshotHistoryWarn"></div>
-      <div class="modal-err" id="snapshotHistoryErr"></div>
       <div class="media-grid" id="snapshotHistoryList">
-        <div class="media-empty">Open History to load snapshots.</div>
+        <div class="muted">Open History to load snapshots.</div>
       </div>
-
-      <div class="modal-row">
-        <button class="tbtn" type="button" id="snapshotHistoryCloseBtn">Close</button>
+      <div class="modal-actions">
+        <button class="btn ghost" id="snapshotHistoryCloseBtn" type="button">Close</button>
       </div>
-    </div>`;
+    </div>
+  `;
 
   document.body.appendChild(modal);
   wireSnapshotHistoryControls();
@@ -150,9 +259,7 @@ function snapshotHistoryRequireConnection() {
   if (snapshotHistoryConnected()) return true;
 
   snapshotHistorySetErr('');
-  snapshotHistorySetWarn(
-    'Connect to a content/site repository first. Snapshot tags live in that repository.'
-  );
+  snapshotHistorySetWarn('Connect to a content/site repository first.<br>Snapshot tags live in that repository.');
   snapshotHistoryRender([]);
   return false;
 }
@@ -197,6 +304,46 @@ async function snapshotHistoryListTags() {
   return out.sort((a, b) => b.name.localeCompare(a.name));
 }
 
+async function snapshotHistoryRename(tag) {
+  if (!snapshotHistoryRequireConnection()) return;
+  if (!tag || !tag.name || !tag.name.startsWith(SNAPSHOT_HISTORY_PREFIX)) {
+    snapshotHistorySetErr('Only snapshot-* tags can be renamed here.');
+    return;
+  }
+
+  snapshotHistorySetErr('');
+  snapshotHistorySetWarn('Loading snapshot name metadata…');
+
+  try {
+    const metadataState = await snapshotHistoryLoadMetadata();
+    const currentName = snapshotHistoryDisplayName(tag, metadataState.metadata);
+    const nextName = window.prompt(
+      'Snapshot name. Leave empty to clear the custom name.',
+      currentName || ''
+    );
+
+    if (nextName === null) {
+      snapshotHistorySetWarn('');
+      return;
+    }
+
+    const nextMetadata = snapshotHistorySetSnapshotName(metadataState.metadata, tag.name, nextName);
+    snapshotHistorySetWarn('Saving snapshot name…');
+    await snapshotHistorySaveMetadata(metadataState, nextMetadata);
+
+    toast('Snapshot name saved', 'ok');
+    await snapshotHistoryRefresh();
+  } catch (e) {
+    snapshotHistorySetWarn('');
+    snapshotHistorySetErr(
+      GitHubErrors.githubErrorMessage(e, {
+        action: 'Rename snapshot'
+      })
+    );
+    toast('Rename snapshot failed', 'err');
+  }
+}
+
 async function snapshotHistoryDelete(tag) {
   if (!snapshotHistoryRequireConnection()) return;
 
@@ -208,7 +355,7 @@ async function snapshotHistoryDelete(tag) {
   const ok = confirm(
     'Delete snapshot tag ' +
       tag.name +
-      '?\n\nThis deletes only the Git tag. It does not change content or main.'
+      '?\n\nThis deletes only the Git tag.\nIt does not change content or main.'
   );
   if (!ok) return;
 
@@ -224,17 +371,21 @@ async function snapshotHistoryDelete(tag) {
     await snapshotHistoryRefresh();
   } catch (e) {
     snapshotHistorySetWarn('');
-    snapshotHistorySetErr(GitHubErrors.githubErrorMessage(e, { action: 'Delete snapshot' }));
+    snapshotHistorySetErr(
+      GitHubErrors.githubErrorMessage(e, {
+        action: 'Delete snapshot'
+      })
+    );
     toast('Delete snapshot failed', 'err');
   }
 }
 
-function snapshotHistoryRender(tags) {
+function snapshotHistoryRender(tags, metadata = snapshotHistoryEmptyMetadata()) {
   const list = document.getElementById('snapshotHistoryList');
   if (!list) return;
 
   if (!tags.length) {
-    list.innerHTML = '<div class="media-empty">No snapshot tags found.</div>';
+    list.innerHTML = '<div class="muted">No snapshot tags found.</div>';
     return;
   }
 
@@ -243,22 +394,32 @@ function snapshotHistoryRender(tags) {
 
   for (const tag of tags) {
     const card = document.createElement('div');
-    card.className = 'media-card';
+    card.className = 'media-card snapshot-history-card';
     snapshotHistoryApplyColor(card, tag);
-    const snapshotNumber = snapshotNumberByName.get(tag.name) || 0;
-    card.innerHTML = `
-      <div class="snapshot-history-head" style="display:flex;align-items:center;gap:10px;padding:8px 9px 2px">
-        <div class="snapshot-history-number" style="min-width:34px;height:34px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);font-family:var(--mono);font-size:15px;font-weight:800;color:var(--txt)">${esc(String(snapshotNumber))}</div>
-        <div class="media-name" style="font-size:15px;color:var(--txt);padding:0;border-top:0">${esc(snapshotHistoryDisplayDate(tag.name))}</div>
-      </div>
-      <div class="media-path mono">${esc(tag.name)}</div>
-      <div class="media-path mono">${esc(snapshotHistoryShortSha(tag.sha))}</div>
-      <div class="media-actions">
-        <a class="media-action copy" href="${escAttr(snapshotHistoryTagUrl(tag.name))}" target="_blank" rel="noopener">Open</a>
-        <button class="media-action" type="button" data-action="rollback">Rollback</button>
-        <button class="media-action delete" type="button" data-action="delete">Delete</button>
-      </div>`;
 
+    const snapshotNumber = snapshotNumberByName.get(tag.name) || 0;
+    const customName = snapshotHistoryDisplayName(tag, metadata);
+    const displayTitle = customName || 'Snapshot #' + snapshotNumber;
+
+    card.innerHTML = `
+      <div class="snapshot-history-head">
+        <div class="snapshot-history-title-wrap">
+          <div class="snapshot-history-title">${esc(displayTitle)}</div>
+          <div class="snapshot-history-date">${esc(snapshotHistoryDisplayDate(tag.name))}</div>
+        </div>
+        <div class="snapshot-history-number">${esc(String(snapshotNumber))}</div>
+      </div>
+      <div class="muted mono">${esc(tag.name)}</div>
+      <div class="muted mono">Commit ${esc(snapshotHistoryShortSha(tag.sha))}</div>
+      <div class="snapshot-history-actions">
+        <a class="btn ghost" href="${escAttr(snapshotHistoryTagUrl(tag.name))}" target="_blank" rel="noopener">Open</a>
+        <button class="btn ghost" type="button" data-action="rename">Rename</button>
+        <button class="btn ghost" type="button" data-action="rollback">Rollback</button>
+        <button class="btn danger" type="button" data-action="delete">Delete</button>
+      </div>
+    `;
+
+    card.querySelector('[data-action="rename"]').onclick = () => snapshotHistoryRename(tag);
     card.querySelector('[data-action="rollback"]').onclick = () => snapshotHistoryRollback(tag);
     card.querySelector('[data-action="delete"]').onclick = () => snapshotHistoryDelete(tag);
     list.appendChild(card);
@@ -273,16 +434,25 @@ async function snapshotHistoryRefresh() {
   snapshotHistorySetWarn('Loading snapshot tags…');
 
   try {
-    const tags = await snapshotHistoryListTags();
+    const [tags, metadataState] = await Promise.all([
+      snapshotHistoryListTags(),
+      snapshotHistoryLoadMetadata()
+    ]);
+
     snapshotHistorySetWarn(
-      tags.length
-        ? '<b>Rollback:</b> moves both content and main to the selected snapshot commit. No new snapshot tag is created.'
-        : ''
+      (metadataState.warning ? esc(metadataState.warning) + '<br>' : '') +
+        (tags.length
+          ? 'Rollback: moves both content and main to the selected snapshot commit.<br>No new snapshot tag is created.'
+          : '')
     );
-    snapshotHistoryRender(tags);
+    snapshotHistoryRender(tags, metadataState.metadata);
   } catch (e) {
     snapshotHistorySetWarn('');
-    snapshotHistorySetErr(GitHubErrors.githubErrorMessage(e, { action: 'Load snapshots' }));
+    snapshotHistorySetErr(
+      GitHubErrors.githubErrorMessage(e, {
+        action: 'Load snapshots'
+      })
+    );
   }
 }
 
@@ -290,7 +460,6 @@ async function snapshotHistoryRefreshEditorAfterRollback(tag) {
   LastWriteCommitCache.set(state.workBranch, tag.sha);
   LastWriteCommitCache.set(state.defaultBranch, tag.sha);
   Store.clearContentTree();
-
   if (typeof loadAll === 'function') await loadAll();
 
   // GitHub ref reads can lag briefly after force-updating both branches.
@@ -301,7 +470,6 @@ async function snapshotHistoryRefreshEditorAfterRollback(tag) {
   LastWriteCommitCache.set(state.workBranch, tag.sha);
   LastWriteCommitCache.set(state.defaultBranch, tag.sha);
   Store.clearContentTree();
-
   if (typeof loadAll === 'function') await loadAll();
 }
 
@@ -320,7 +488,6 @@ async function snapshotHistoryRollback(tag) {
       `Branches: ${state.workBranch} and ${state.defaultBranch}\n\n` +
       'No new snapshot tag will be created.'
   );
-
   if (!ok) return;
 
   snapshotHistorySetErr('');
@@ -330,18 +497,21 @@ async function snapshotHistoryRollback(tag) {
     await GitHubApi.updateRef(state.workBranch, tag.sha, { force: true });
     await GitHubApi.updateRef(state.defaultBranch, tag.sha, { force: true });
 
-    snapshotHistorySetWarn('Rollback complete. Refreshing editor from rollback commit…');
+    snapshotHistorySetWarn('Rollback complete.<br>Refreshing editor from rollback commit…');
     toast('Rolled back to ' + tag.name, 'ok');
 
     await snapshotHistoryRefreshEditorAfterRollback(tag);
 
-    snapshotHistorySetWarn(
-      'Rollback complete. Both content and main now point to ' + esc(tag.name) + '.'
-    );
+    snapshotHistorySetWarn(`Rollback complete.
+Both content and main now point to ${esc(tag.name)}.`);
     await snapshotHistoryRefresh();
   } catch (e) {
     snapshotHistorySetWarn('');
-    snapshotHistorySetErr(GitHubErrors.githubErrorMessage(e, { action: 'Rollback snapshot' }));
+    snapshotHistorySetErr(
+      GitHubErrors.githubErrorMessage(e, {
+        action: 'Rollback snapshot'
+      })
+    );
     toast('Rollback failed', 'err');
   }
 }
@@ -386,7 +556,6 @@ window.openSnapshotHistory = openSnapshotHistory;
 
 function setupSnapshotHistory() {
   const btn = ensureSnapshotHistoryButton();
-
   if (btn) {
     btn.onclick = (event) => {
       if (event) event.preventDefault();

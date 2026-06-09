@@ -1,6 +1,6 @@
 # GitCMS Admin
 
-Current version: `1.1.88-readme-runtime-notes-fix`.
+Current version: `1.1.89-named-snapshots`.
 
 Zero-backend CMS for HTML-native static sites. The admin is a static browser app that edits fragments in a separate GitHub content repository through the GitHub API.
 
@@ -122,3 +122,37 @@ Rollback does not create pre-rollback safety snapshots. snapshots represent publ
 ## Docs output test rule
 
 The build script writes the standalone local artifact to `admin.html` and writes the GitHub Pages hosted artifact to `docs/index.html`. The quality workflow verifies `docs/index.html` after `npm run build`.
+
+## Named snapshots
+
+Version target: `v1.1.89-named-snapshots`.
+
+Snapshot names are human-facing metadata. Git tag names stay unchanged.
+
+Names are stored in the administered content repository at:
+
+```txt
+.gitcms/snapshots.json
+```
+
+The internal snapshot tag remains the technical source of truth for rollback and delete actions.
+
+Example:
+
+```txt
+Tag:
+snapshot-2026-06-09-142210
+
+Display name:
+Homepage approved before client review
+```
+
+Rename behavior:
+
+- `Rename` updates `.gitcms/snapshots.json` on the configured work branch.
+- It does not rename the Git tag.
+- It does not move `content` or `main`.
+- It does not affect rollback/delete targeting.
+- Empty rename clears the custom display name.
+
+Snapshot names are trimmed, plain text only, and limited to 80 characters.

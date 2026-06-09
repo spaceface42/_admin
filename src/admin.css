@@ -1466,3 +1466,54 @@ textarea {
   background: var(--line2);
   border-radius: 6px;
 }
+
+/* Snapshot history */
+.snapshot-history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.snapshot-history-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.snapshot-history-title-wrap {
+  min-width: 0;
+}
+
+.snapshot-history-title {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.snapshot-history-date {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.15;
+  margin-top: 4px;
+}
+
+.snapshot-history-number {
+  align-items: center;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 4px 8px;
+}
+
+.snapshot-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
