@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>_admin CMS</title>
+  <title>Blackhole CMS Studio</title>
   <link rel="stylesheet" href="admin.css">
 </head>
 <body>
   <!-- Auth Overlay -->
   <div id="login-screen" class="overlay hidden">
     <div class="card">
-      <h2>CMS Login</h2>
-      <p>Paste a fine-grained GitHub PAT with <strong>Contents: Read & Write</strong> on <code>_blackhole</code>.</p>
+      <h2>CMS Studio Login</h2>
+      <p>Enter your fine-grained GitHub Personal Access Token with <strong>Contents: Read & Write</strong> permissions.</p>
       <input type="password" id="pat-input" placeholder="github_pat_..." autocomplete="off">
-      <button id="login-btn">Login</button>
+      <button id="login-btn">Authenticate</button>
     </div>
   </div>
 
@@ -21,31 +21,36 @@
   <div id="app">
     <aside id="sidebar">
       <div class="sidebar-header">
-        <strong>/src Files</strong>
+        <div class="brand">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+          <span>/src Repository</span>
+        </div>
         <div class="sidebar-actions">
-          <!-- .html Filter Checkbox -->
-          <label title="Show HTML only" style="font-size: 0.75rem; display: flex; align-items: center; gap: 0.2rem; cursor: pointer; margin-right: 0.25rem;">
+          <label class="filter-chip" title="Show .html files only">
             <input type="checkbox" id="filter-html-checkbox"> .html
           </label>
-          <button id="new-btn" title="Create Text/HTML File">+ File</button>
-          <label class="upload-btn" title="Upload Image">
-            + Img <input type="file" id="upload-input" accept="image/*" hidden>
+          <button id="new-btn" title="Create New File">+</button>
+          <label class="upload-btn" title="Upload Asset">
+            ↑ <input type="file" id="upload-input" accept="image/*" hidden>
           </label>
         </div>
       </div>
       <ul id="file-tree"></ul>
       <div class="sidebar-footer">
-        <button id="logout-btn">Logout</button>
+        <button id="logout-btn" class="secondary-btn">Disconnect Token</button>
       </div>
     </aside>
 
     <main id="workspace">
       <header id="toolbar">
-        <span id="current-path">Select a file from /src</span>
+        <div class="path-display">
+          <span class="dot"></span>
+          <span id="current-path">Select a file from the sidebar to begin editing</span>
+        </div>
         <div class="toolbar-actions">
           <span id="status-msg"></span>
-          <button id="delete-btn" class="danger" disabled>Delete</button>
-          <button id="save-btn" class="primary" disabled>Save</button>
+          <button id="delete-btn" class="danger" disabled>Delete File</button>
+          <button id="save-btn" class="primary" disabled>Commit Changes</button>
         </div>
       </header>
 
@@ -53,14 +58,15 @@
         <iframe id="html-editor" class="hidden"></iframe>
         <textarea id="text-editor" class="hidden" spellcheck="false"></textarea>
         <div id="image-preview" class="hidden">
-          <img id="preview-img" alt="Preview">
+          <img id="preview-img" alt="Asset Preview">
         </div>
 
-        <!-- Floating inspector for <a> and <img> inside the HTML editor -->
+        <!-- Floating Attribute Inspector -->
         <div id="attr-panel" class="hidden">
-          <label id="href-row">href <input type="text" id="attr-href"></label>
-          <label id="src-row">src <input type="text" id="attr-src"></label>
-          <label id="alt-row">alt <input type="text" id="attr-alt"></label>
+          <div class="panel-title">Element Inspector</div>
+          <label id="href-row"><span>href</span> <input type="text" id="attr-href"></label>
+          <label id="src-row"><span>src</span> <input type="text" id="attr-src"></label>
+          <label id="alt-row"><span>alt</span> <input type="text" id="attr-alt"></label>
         </div>
       </div>
     </main>
