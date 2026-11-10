@@ -122,6 +122,57 @@ async function ghFetch(endpoint, options = {}) {
   return res;
 }
 
+// Turns a failed GitHub response into a readable message.
+// `conflict` is true when the file changed on GitHub since we loaded it (409, or a 422 about the sha).
+async function describeFailure(res, action) {
+  let detail = '';
+  try {
+    detail = String((await res.json()).message || '');
+  } catch (_) {
+    /* body was not JSON */
+  }
+  const status = res.status;
+  const conflict = status === 409 || (status === 422 && /\bsha\b/i.test(detail));
+  let text;
+
+  if (conflict) {
+    text = `${action} failed: the file changed on GitHub since you opened it. Re-open it to load the latest version.`;
+  } else if (status === 401) {
+    text = 'Token invalid or expired. Please log in again.';
+  } else if (status === 429 || (status === 403 && res.headers.get('x-ratelimit-remaining') === '0')) {
+    text = 'GitHub rate limit reached. Wait a bit and try again.';
+  } else if (status === 403) {
+    text = `${action} failed: no permission (the token needs Contents: Read & Write, and the branch must allow pushes).`;
+  } else if (status === 404) {
+    text = `${action} failed: not found (check config.json and that the token can access the repo).`;
+  } else if (status === 422) {
+    text = `${action} failed: ${detail || 'GitHub rejected the request'}`;
+  } else if (status >= 500) {
+    text = `${action} failed: GitHub is having problems (${status}). Try again shortly.`;
+  } else {
+    text = `${action} failed (${status})${detail ? `: ${detail}` : ''}`;
+  }
+  return { text, conflict, status, detail };
+}
+
+// Runs an action once at a time. Ignores extra clicks while busy and shows any thrown error in the status bar.
+let busy = false;
+async function guarded(fn) {
+  if (busy) return;
+  busy = true;
+  try {
+    await fn();
+  } catch (err) {
+    if (err instanceof TypeError) {
+      setStatus('Network error: could not reach GitHub', true);
+    } else {
+      setStatus((err && err.message) || 'Something went wrong', true);
+    }
+  } finally {
+    busy = false;
+  }
+}
+
 /* ---------- blob cache (instant re-opens, prefetch) ---------- */
 
 function getCachedBlob(sha) {
@@ -156,7 +207,7 @@ function fetchBlob(sha) {
     const res = await ghFetch(`/git/blobs/${sha}`, {
       headers: { Accept: 'application/vnd.github.raw+json' }
     });
-    if (!res.ok) throw new Error(`Could not load file (${res.status})`);
+    if (!res.ok) throw new Error((await describeFailure(res, 'Loading file')).text);
     const buf = await res.arrayBuffer();
     cacheBlob(sha, buf);
     return buf;
@@ -214,7 +265,14 @@ async function init() {
     /* storage unavailable; nothing to clean */
   }
 
-  cfg = await fetch('config.json').then((r) => r.json());
+  try {
+    const cfgRes = await fetch('config.json');
+    if (!cfgRes.ok) throw new Error(`config.json ${cfgRes.status}`);
+    cfg = await cfgRes.json();
+  } catch (err) {
+    setStatus(`Could not load config.json (${err.message})`, true);
+    return;
+  }
   cfg.root = (cfg.root || '').replace(/^\/+|\/+$/g, '');
   if (!cfg.siteUrl.endsWith('/')) cfg.siteUrl += '/';
 
@@ -225,7 +283,7 @@ async function init() {
     store.setItem(TOKEN_KEY, val);
     $('pat-input').value = '';
     $('login-screen').classList.add('hidden');
-    bootTree();
+    bootTree().catch((err) => setStatus(err.message || 'Failed to load repo tree', true));
   };
 
   $('logout-btn').onclick = () => {
@@ -238,33 +296,15 @@ async function init() {
     location.reload();
   };
 
-  $('new-btn').onclick = createNewFile;
-  $('upload-input').onchange = uploadImageFile;
-
-
-
-
-////////
-let busy = false;
-async function guarded(fn) {
-  if (busy) return;
-  busy = true;
-  try { await fn(); }
-  catch (err) { setStatus(err.message || 'Network error', true); }
-  finally { busy = false; }
-}
-
-
-// $('save-btn').onclick = saveCurrentFile;
-// $('delete-btn').onclick = deleteCurrentFile;
-
-$('save-btn').onclick = () => guarded(saveCurrentFile);
-$('delete-btn').onclick = () => guarded(deleteCurrentFile);
-////////
-
-
-
-
+  // Every action that talks to GitHub goes through guarded(): one at a time, errors shown in the status bar.
+  $('new-btn').onclick = () => guarded(createNewFile);
+  $('save-btn').onclick = () => guarded(saveCurrentFile);
+  $('delete-btn').onclick = () => guarded(deleteCurrentFile);
+  $('upload-input').onchange = (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // reset so picking the same file again still fires "change"
+    if (file) guarded(() => uploadImageFile(file));
+  };
 
   ['href', 'src', 'alt'].forEach((attr) => {
     $(`attr-${attr}`).oninput = (e) => {
@@ -279,14 +319,14 @@ $('delete-btn').onclick = () => guarded(deleteCurrentFile);
       store.getItem(TOKEN_KEY) &&
       Date.now() - lastTreeCheck > REVALIDATE_AFTER_MS
     ) {
-      loadTree();
+      loadTree().catch(() => {});
     }
   });
 
   if (!store.getItem(TOKEN_KEY)) {
     showLogin();
   } else {
-    bootTree();
+    bootTree().catch((err) => setStatus(err.message || 'Failed to load repo tree', true));
   }
 }
 
@@ -379,16 +419,30 @@ async function fetchTree(silent) {
   }
 
   if (!res || !res.ok) {
-    setStatus(
-      treeEntries.length
-        ? 'Could not refresh the file list (showing the last known copy)'
-        : 'Failed to load repo tree. Check token or config.json.',
-      true
-    );
+    let msg;
+    if (!res) {
+      msg = treeEntries.length
+        ? 'Could not reach GitHub (showing the last known file list)'
+        : 'Could not reach GitHub. Check your connection.';
+    } else if (res.status === 401) {
+      msg = 'Token invalid or expired. Please log in again.';
+    } else {
+      msg = treeEntries.length
+        ? `Could not refresh the file list (${res.status}, showing the last known copy)`
+        : `Failed to load repo tree (${res.status}). Check token or config.json.`;
+    }
+    setStatus(msg, true);
     return; // ghFetch already shows the login screen on 401
   }
 
-  const data = await res.json();
+  let data;
+  try {
+    data = await res.json();
+  } catch (_) {
+    setStatus('GitHub sent an unreadable file list', true);
+    return;
+  }
+
   const prefix = rootPrefix();
   const entries = data.tree
     .filter((item) => item.type === 'blob' && item.path.startsWith(prefix))
@@ -428,7 +482,10 @@ async function openFile(path) {
         cache: 'no-store'
       });
       if (seq !== openSeq) return;
-      if (!res.ok) return setStatus('Error fetching file', true);
+      if (!res.ok) {
+        const f = await describeFailure(res, 'Opening file');
+        return setStatus(f.text, true);
+      }
       sha = (await res.json()).sha;
       shaByPath.set(path, sha);
     }
@@ -438,7 +495,9 @@ async function openFile(path) {
       if (seq !== openSeq) return;
     }
   } catch (err) {
-    if (seq === openSeq) setStatus(err.message || 'Error fetching file', true);
+    if (seq === openSeq) {
+      setStatus(err instanceof TypeError ? 'Network error: could not reach GitHub' : err.message || 'Error fetching file', true);
+    }
     return;
   }
 
@@ -663,46 +722,56 @@ function serializeCleanHtml() {
 }
 
 async function saveCurrentFile() {
-  if (!currentFile || (currentFile.type !== 'html' && currentFile.type !== 'text')) return;
+  // Remember which file we are saving: the user may click another file while the request is running.
+  const file = currentFile;
+  if (!file || (file.type !== 'html' && file.type !== 'text')) return;
 
-  const rawContent = currentFile.type === 'html' ? serializeCleanHtml() : $('text-editor').value;
+  const rawContent = file.type === 'html' ? serializeCleanHtml() : $('text-editor').value;
   if (rawContent === null) return setStatus('Preview is not ready yet', true);
 
   setStatus('Saving...');
-  const res = await ghFetch(`/contents/${encPath(currentFile.path)}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      message: `admin: update ${currentFile.path}`,
-      content: toBase64(rawContent),
-      sha: currentFile.sha,
-      branch: cfg.branch
-    })
-  });
+  $('save-btn').disabled = true; // no double saves while the request is running
 
-  if (res.status === 409 || res.status === 422) {
-    setStatus('SHA conflict: File was modified externally. Reload the file before saving.', true);
-    alert('SHA Conflict: Re-open the file from the left panel to fetch the latest version.');
-    return;
+  try {
+    const res = await ghFetch(`/contents/${encPath(file.path)}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        message: `admin: update ${file.path}`,
+        content: toBase64(rawContent),
+        sha: file.sha,
+        branch: cfg.branch
+      })
+    });
+
+    if (!res.ok) {
+      const f = await describeFailure(res, 'Save');
+      return setStatus(f.text, true);
+    }
+
+    const data = await res.json();
+    if (!data.content || !data.content.sha) throw new Error('Save may have worked, but GitHub sent an unexpected reply. Re-open the file to check.');
+
+    file.sha = data.content.sha; // next save must use the new sha
+    cacheBlob(data.content.sha, textToBuffer(rawContent)); // re-opening this version needs no download
+    upsertEntry(file.path, data.content.sha, data.content.size);
+    setStatus(currentFile === file ? 'Saved & committed!' : `Saved & committed ${file.path}`);
+  } finally {
+    // Re-enable (also after an error so you can retry), but only if this file is still the open one.
+    if (currentFile === file) $('save-btn').disabled = false;
   }
-
-  if (!res.ok) return setStatus('Save failed', true);
-
-  const data = await res.json();
-  currentFile.sha = data.content.sha;
-  cacheBlob(data.content.sha, textToBuffer(rawContent)); // re-opening this version needs no download
-  upsertEntry(currentFile.path, data.content.sha, data.content.size);
-  setStatus('Saved & committed!');
 }
 
 /* ---------- create / upload / delete ---------- */
 
 async function createNewFile() {
-  const relPath = prompt('File path inside /src (e.g. contact.html or notes.txt):');
+  const where = cfg.root ? `/${cfg.root}` : 'the repo root';
+  const relPath = (prompt(`File path inside ${where} (e.g. contact.html or notes.txt):`) || '').trim();
   if (!relPath) return;
+  if (relPath.split('/').includes('..')) return setStatus('Invalid path', true);
   const path = fullPath(relPath);
   if (shaByPath.has(path)) return setStatus(`${path} already exists`, true);
 
-  const isHtml = path.endsWith('.html') || path.endsWith('.htm');
+  const isHtml = /\.html?$/i.test(path);
   const starter = isHtml
     ? `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>New Page</title>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <h1>New Page</h1>\n  <p>Click here to edit text.</p>\n</body>\n</html>\n`
     : '';
@@ -717,21 +786,22 @@ async function createNewFile() {
     })
   });
 
-  if (!res.ok) return setStatus('Could not create file (does it already exist?)', true);
+  if (!res.ok) {
+    const f = await describeFailure(res, 'Create');
+    // Creating without a sha on an existing path comes back as 422 "sha wasn't supplied".
+    return setStatus(f.conflict ? `${path} already exists (it may have been added elsewhere)` : f.text, true);
+  }
 
   const data = await res.json();
   cacheBlob(data.content.sha, textToBuffer(starter));
   upsertEntry(path, data.content.sha, data.content.size);
-  openFile(path);
+  openFile(path); // not awaited on purpose: it reports its own errors and releases the busy lock sooner
 }
 
-async function uploadImageFile(e) {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-
-  const subPath = prompt('Save image under /src as:', file.name);
+async function uploadImageFile(file) {
+  const subPath = (prompt('Save image as:', file.name) || '').trim();
   if (!subPath) return;
+  if (subPath.split('/').includes('..')) return setStatus('Invalid path', true);
   const path = fullPath(subPath);
 
   setStatus(`Uploading ${path}...`);
@@ -743,7 +813,13 @@ async function uploadImageFile(e) {
     const check = await ghFetch(`/contents/${encPath(path)}?ref=${encodeURIComponent(cfg.branch)}`, {
       cache: 'no-store'
     });
-    if (check.ok) existingSha = (await check.json()).sha;
+    if (check.ok) {
+      existingSha = (await check.json()).sha;
+    } else if (check.status !== 404) {
+      // 404 just means "new file". Anything else is a real problem (bad token, rate limit, ...).
+      const f = await describeFailure(check, 'Upload');
+      return setStatus(f.text, true);
+    }
   }
 
   const res = await ghFetch(`/contents/${encPath(path)}`, {
@@ -756,7 +832,10 @@ async function uploadImageFile(e) {
     })
   });
 
-  if (!res.ok) return setStatus('Upload failed', true);
+  if (!res.ok) {
+    const f = await describeFailure(res, 'Upload');
+    return setStatus(f.text, true);
+  }
 
   const data = await res.json();
   upsertEntry(path, data.content.sha, data.content.size);
@@ -764,34 +843,38 @@ async function uploadImageFile(e) {
 }
 
 async function deleteCurrentFile() {
-  if (!currentFile) return;
-  if (!confirm(`Delete ${currentFile.path}?`)) return;
+  const file = currentFile;
+  if (!file) return;
+  if (!confirm(`Delete ${file.path}?`)) return;
 
-  setStatus(`Deleting ${currentFile.path}...`);
-  const res = await ghFetch(`/contents/${encPath(currentFile.path)}`, {
+  setStatus(`Deleting ${file.path}...`);
+  const res = await ghFetch(`/contents/${encPath(file.path)}`, {
     method: 'DELETE',
     body: JSON.stringify({
-      message: `admin: delete ${currentFile.path}`,
-      sha: currentFile.sha,
+      message: `admin: delete ${file.path}`,
+      sha: file.sha,
       branch: cfg.branch
     })
   });
 
-  if (res.status === 409) {
-    return setStatus('SHA conflict', true);
+  // 404 means it is already gone on GitHub, so treat it as deleted and clean up locally.
+  if (!res.ok && res.status !== 404) {
+    const f = await describeFailure(res, 'Delete');
+    return setStatus(f.text, true);
   }
-  if (!res.ok) return setStatus('Delete failed', true);
 
   openSeq++; // cancel any in-flight open
-  removeEntry(currentFile.path);
-  currentFile = null;
-  selectedMediaEl = null;
-  $('current-path').textContent = 'Select a file from /src';
-  $('save-btn').disabled = true;
-  $('delete-btn').disabled = true;
-  showEditor(null);
-  $('attr-panel').classList.add('hidden');
-  setStatus('Deleted');
+  removeEntry(file.path);
+  if (currentFile === file) {
+    currentFile = null;
+    selectedMediaEl = null;
+    $('current-path').textContent = 'Select a file from /src';
+    $('save-btn').disabled = true;
+    $('delete-btn').disabled = true;
+    showEditor(null);
+    $('attr-panel').classList.add('hidden');
+  }
+  setStatus(res.status === 404 ? 'File was already deleted on GitHub' : 'Deleted');
 }
 
 init();
