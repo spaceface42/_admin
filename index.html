@@ -7,21 +7,26 @@
   <link rel="stylesheet" href="admin.css">
 </head>
 <body>
+  <!-- Auth Overlay -->
   <div id="login-screen" class="overlay hidden">
-    <form id="login-form" class="card">
+    <div class="card">
       <h2>CMS Login</h2>
       <p>Paste a fine-grained GitHub PAT with <strong>Contents: Read & Write</strong> on <code>_blackhole</code>.</p>
-      <!-- Hidden username field: satisfies Chrome's "password forms should have a username field" hint -->
-      <input type="text" name="username" value="github-pat" autocomplete="username" tabindex="-1" aria-hidden="true" hidden style="display:none">
-      <input type="password" id="pat-input" name="pat" placeholder="github_pat_..." autocomplete="off">
-      <button type="submit" id="login-btn">Login</button>
-    </form>
+      <input type="password" id="pat-input" placeholder="github_pat_..." autocomplete="off">
+      <button id="login-btn">Login</button>
+    </div>
   </div>
+
+  <!-- Main Workspace -->
   <div id="app">
     <aside id="sidebar">
       <div class="sidebar-header">
         <strong>/src Files</strong>
         <div class="sidebar-actions">
+          <!-- .html Filter Checkbox -->
+          <label title="Show HTML only" style="font-size: 0.75rem; display: flex; align-items: center; gap: 0.2rem; cursor: pointer; margin-right: 0.25rem;">
+            <input type="checkbox" id="filter-html-checkbox"> .html
+          </label>
           <button id="new-btn" title="Create Text/HTML File">+ File</button>
           <label class="upload-btn" title="Upload Image">
             + Img <input type="file" id="upload-input" accept="image/*" hidden>
@@ -33,6 +38,7 @@
         <button id="logout-btn">Logout</button>
       </div>
     </aside>
+
     <main id="workspace">
       <header id="toolbar">
         <span id="current-path">Select a file from /src</span>
@@ -42,12 +48,15 @@
           <button id="save-btn" class="primary" disabled>Save</button>
         </div>
       </header>
+
       <div id="editor-container">
         <iframe id="html-editor" class="hidden"></iframe>
         <textarea id="text-editor" class="hidden" spellcheck="false"></textarea>
         <div id="image-preview" class="hidden">
           <img id="preview-img" alt="Preview">
         </div>
+
+        <!-- Floating inspector for <a> and <img> inside the HTML editor -->
         <div id="attr-panel" class="hidden">
           <label id="href-row">href <input type="text" id="attr-href"></label>
           <label id="src-row">src <input type="text" id="attr-src"></label>
@@ -56,6 +65,7 @@
       </div>
     </main>
   </div>
+
   <script src="admin.js"></script>
 </body>
 </html>
