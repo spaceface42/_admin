@@ -240,8 +240,31 @@ async function init() {
 
   $('new-btn').onclick = createNewFile;
   $('upload-input').onchange = uploadImageFile;
-  $('save-btn').onclick = saveCurrentFile;
-  $('delete-btn').onclick = deleteCurrentFile;
+
+
+
+
+////////
+let busy = false;
+async function guarded(fn) {
+  if (busy) return;
+  busy = true;
+  try { await fn(); }
+  catch (err) { setStatus(err.message || 'Network error', true); }
+  finally { busy = false; }
+}
+
+
+// $('save-btn').onclick = saveCurrentFile;
+// $('delete-btn').onclick = deleteCurrentFile;
+
+$('save-btn').onclick = () => guarded(saveCurrentFile);
+$('delete-btn').onclick = () => guarded(deleteCurrentFile);
+////////
+
+
+
+
 
   ['href', 'src', 'alt'].forEach((attr) => {
     $(`attr-${attr}`).oninput = (e) => {
