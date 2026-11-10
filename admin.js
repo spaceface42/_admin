@@ -3,13 +3,44 @@
 const TOKEN_KEY = 'cms_github_pat';
 const store = window.sessionStorage; // cleared when the tab closes
 
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico']);
+const IMAGE_MIME = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+  webp: 'image/webp',
+  ico: 'image/x-icon'
+};
 const TEXT_EXTS = new Set(['txt', 'md', 'css', 'js', 'mjs', 'json', 'xml', 'csv', 'yml', 'yaml', 'toml']);
+
+// Speed settings
+const BLOB_CACHE_MAX_BYTES = 30 * 1024 * 1024; // in-memory file cache
+const PREFETCH_MAX_FILES = 40; // files fetched in the background after the tree loads
+const PREFETCH_MAX_BYTES = 256 * 1024; // skip big files when prefetching
+const PREFETCH_WORKERS = 3;
+const HOVER_PREFETCH_DELAY_MS = 120;
+const REVALIDATE_AFTER_MS = 30 * 1000; // re-check the repo when the tab regains focus
 
 let cfg = null;
 let currentFile = null;
 let selectedMediaEl = null;
 let openSeq = 0; // guards against out-of-order responses when clicking files quickly
+let previewUrl = null;
+
+// File tree state
+let treeEntries = []; // [{ path, sha, size }]
+const shaByPath = new Map();
+let treePromise = null;
+let treeFresh = false; // true once the tree has been confirmed against GitHub this session
+let lastTreeCheck = 0;
+let prefetchGen = 0;
+let hoverTimer = null;
+
+// Blobs are content-addressed (keyed by sha), so a cached copy can never be stale.
+const blobCache = new Map(); // sha -> ArrayBuffer (Map order = least recently used first)
+const blobInflight = new Map(); // sha -> Promise<ArrayBuffer>
+let blobCacheBytes = 0;
 
 const $ = (id) => document.getElementById(id);
 
@@ -19,6 +50,7 @@ const $ = (id) => document.getElementById(id);
 const encPath = (p) => p.split('/').map(encodeURIComponent).join('/');
 const rootPrefix = () => (cfg.root ? `${cfg.root}/` : '');
 const fullPath = (rel) => [cfg.root, rel.replace(/^\/+/, '')].filter(Boolean).join('/');
+const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 
 function toBase64(str) {
   const bytes = new TextEncoder().encode(str);
@@ -29,10 +61,9 @@ function toBase64(str) {
   return btoa(bin);
 }
 
-function fromBase64(b64) {
-  const bin = atob(b64.replace(/\s/g, ''));
-  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
+function textToBuffer(str) {
+  const bytes = new TextEncoder().encode(str);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
 function fileToBase64(file) {
@@ -44,12 +75,16 @@ function fileToBase64(file) {
   });
 }
 
-function fileKind(path) {
+function extOf(path) {
   const name = path.split('/').pop();
   const dot = name.lastIndexOf('.');
-  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+}
+
+function fileKind(path) {
+  const ext = extOf(path);
   if (ext === 'html' || ext === 'htm') return 'html';
-  if (IMAGE_EXTS.has(ext)) return 'img';
+  if (IMAGE_MIME[ext]) return 'img';
   if (ext === '' || TEXT_EXTS.has(ext)) return 'text';
   return 'binary'; // never decode/re-save these as text: it would corrupt them
 }
@@ -87,17 +122,83 @@ async function ghFetch(endpoint, options = {}) {
   return res;
 }
 
-// Reads a file's text. Files over 1 MB come back from the contents API with
-// empty content, so fall back to the blob API instead of showing an empty
-// editor (which would wipe the file on save).
-async function readText(data) {
-  let b64 = data.content;
-  if (!b64 && data.size > 0) {
-    const r = await ghFetch(`/git/blobs/${data.sha}`);
-    if (!r.ok) throw new Error('Could not read file contents');
-    b64 = (await r.json()).content;
+/* ---------- blob cache (instant re-opens, prefetch) ---------- */
+
+function getCachedBlob(sha) {
+  const buf = blobCache.get(sha);
+  if (buf) {
+    blobCache.delete(sha); // mark as most recently used
+    blobCache.set(sha, buf);
   }
-  return fromBase64(b64 || '');
+  return buf;
+}
+
+function cacheBlob(sha, buf) {
+  if (!sha || blobCache.has(sha)) return;
+  blobCache.set(sha, buf);
+  blobCacheBytes += buf.byteLength;
+  for (const [key, val] of blobCache) {
+    if (blobCacheBytes <= BLOB_CACHE_MAX_BYTES) break;
+    if (key === sha) continue;
+    blobCache.delete(key); // evict least recently used
+    blobCacheBytes -= val.byteLength;
+  }
+}
+
+// Fetches a file's raw bytes by blob sha. Works for any size, and concurrent
+// callers (hover prefetch + click) share a single request.
+function fetchBlob(sha) {
+  const hit = getCachedBlob(sha);
+  if (hit) return Promise.resolve(hit);
+  if (blobInflight.has(sha)) return blobInflight.get(sha);
+
+  const p = (async () => {
+    const res = await ghFetch(`/git/blobs/${sha}`, {
+      headers: { Accept: 'application/vnd.github.raw+json' }
+    });
+    if (!res.ok) throw new Error(`Could not load file (${res.status})`);
+    const buf = await res.arrayBuffer();
+    cacheBlob(sha, buf);
+    return buf;
+  })().finally(() => blobInflight.delete(sha));
+
+  blobInflight.set(sha, p);
+  return p;
+}
+
+// Quietly download the small text/HTML files so they open instantly later.
+async function startPrefetch() {
+  const gen = ++prefetchGen;
+  const rank = (f) => (fileKind(f.path) === 'html' ? 0 : 1);
+  const queue = treeEntries
+    .filter((f) => {
+      const k = fileKind(f.path);
+      return (k === 'html' || k === 'text') && f.size > 0 && f.size <= PREFETCH_MAX_BYTES && !blobCache.has(f.sha);
+    })
+    .sort((a, b) => rank(a) - rank(b))
+    .slice(0, PREFETCH_MAX_FILES);
+
+  const worker = async () => {
+    while (queue.length && gen === prefetchGen) {
+      const f = queue.shift();
+      try {
+        await fetchBlob(f.sha);
+      } catch (_) {
+        /* prefetch is best-effort */
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: PREFETCH_WORKERS }, worker));
+}
+
+function hoverPrefetch(path) {
+  clearTimeout(hoverTimer);
+  const kind = fileKind(path);
+  if (kind !== 'html' && kind !== 'text') return;
+  hoverTimer = setTimeout(() => {
+    const sha = shaByPath.get(path);
+    if (sha) fetchBlob(sha).catch(() => {});
+  }, HOVER_PREFETCH_DELAY_MS);
 }
 
 /* ---------- init ---------- */
@@ -124,11 +225,16 @@ async function init() {
     store.setItem(TOKEN_KEY, val);
     $('pat-input').value = '';
     $('login-screen').classList.add('hidden');
-    loadTree();
+    bootTree();
   };
 
   $('logout-btn').onclick = () => {
     store.removeItem(TOKEN_KEY);
+    try {
+      localStorage.removeItem(treeCacheKey());
+    } catch (_) {
+      /* ignore */
+    }
     location.reload();
   };
 
@@ -143,37 +249,134 @@ async function init() {
     };
   });
 
+  // Pick up changes made elsewhere (other commits, other tabs) when you come back to this tab.
+  document.addEventListener('visibilitychange', () => {
+    if (
+      document.visibilityState === 'visible' &&
+      store.getItem(TOKEN_KEY) &&
+      Date.now() - lastTreeCheck > REVALIDATE_AFTER_MS
+    ) {
+      loadTree();
+    }
+  });
+
   if (!store.getItem(TOKEN_KEY)) {
     showLogin();
   } else {
-    loadTree();
+    bootTree();
   }
 }
 
 /* ---------- file tree ---------- */
 
-async function loadTree() {
-  setStatus('Loading file tree...');
-  const res = await ghFetch(`/git/trees/${cfg.branch}?recursive=1`);
-  if (!res.ok) {
-    setStatus('Failed to load repo tree. Check token or config.json.', true);
-    return; // ghFetch already shows the login screen on 401
-  }
-  const data = await res.json();
-  const prefix = rootPrefix();
-  const files = data.tree.filter((item) => item.type === 'blob' && item.path.startsWith(prefix));
+// The file list is not secret, so it is cached in localStorage and shown instantly on the next visit
+// while GitHub is asked (in the background) whether anything changed. Logout clears it.
+const treeCacheKey = () => `cms_tree:${cfg.owner}/${cfg.repo}@${cfg.branch}:${cfg.root}`;
 
+function bootTree() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(treeCacheKey()) || 'null');
+    if (
+      Array.isArray(cached) &&
+      cached.length &&
+      cached.every((e) => e && typeof e.path === 'string' && typeof e.sha === 'string')
+    ) {
+      applyTree(cached, false);
+    }
+  } catch (_) {
+    /* ignore a corrupt cache */
+  }
+  return loadTree();
+}
+
+function applyTree(entries, persist = true) {
+  const sig = (list) => list.map((e) => e.path).join('\n');
+  const sorted = [...entries].sort(byPath);
+  const listChanged = sig(sorted) !== sig(treeEntries);
+
+  treeEntries = sorted;
+  shaByPath.clear();
+  sorted.forEach((e) => shaByPath.set(e.path, e.sha));
+
+  if (listChanged) renderTree(); // skip needless re-renders so the sidebar doesn't jump
+
+  if (persist) {
+    try {
+      localStorage.setItem(treeCacheKey(), JSON.stringify(sorted));
+    } catch (_) {
+      /* storage full or unavailable */
+    }
+  }
+}
+
+function renderTree() {
+  const prefix = rootPrefix();
   const ul = $('file-tree');
   ul.innerHTML = '';
-  files.forEach((f) => {
+  treeEntries.forEach((f) => {
     const li = document.createElement('li');
     li.textContent = f.path.slice(prefix.length);
     li.dataset.path = f.path;
     if (currentFile && currentFile.path === f.path) li.classList.add('active');
     li.onclick = () => openFile(f.path);
+    li.onmouseenter = () => hoverPrefetch(f.path);
+    li.onmouseleave = () => clearTimeout(hoverTimer);
     ul.appendChild(li);
   });
-  setStatus(data.truncated ? 'Ready (repo is large: file list is truncated)' : 'Ready');
+}
+
+// Local changes (save / create / delete) update the list immediately instead of re-downloading it.
+function upsertEntry(path, sha, size) {
+  applyTree([...treeEntries.filter((e) => e.path !== path), { path, sha, size: size || 0 }]);
+  lastTreeCheck = Date.now();
+}
+
+function removeEntry(path) {
+  applyTree(treeEntries.filter((e) => e.path !== path));
+  lastTreeCheck = Date.now();
+}
+
+function loadTree() {
+  if (treePromise) return treePromise;
+  treePromise = fetchTree(treeFresh).finally(() => {
+    treePromise = null;
+  });
+  return treePromise;
+}
+
+async function fetchTree(silent) {
+  if (!silent) setStatus(treeEntries.length ? 'Checking for changes...' : 'Loading file tree...');
+
+  let res = null;
+  try {
+    // "no-cache" = always ask GitHub, but let it answer 304 (tiny, fast) when nothing changed.
+    res = await ghFetch(`/git/trees/${cfg.branch}?recursive=1`, { cache: 'no-cache' });
+  } catch (_) {
+    res = null;
+  }
+
+  if (!res || !res.ok) {
+    setStatus(
+      treeEntries.length
+        ? 'Could not refresh the file list (showing the last known copy)'
+        : 'Failed to load repo tree. Check token or config.json.',
+      true
+    );
+    return; // ghFetch already shows the login screen on 401
+  }
+
+  const data = await res.json();
+  const prefix = rootPrefix();
+  const entries = data.tree
+    .filter((item) => item.type === 'blob' && item.path.startsWith(prefix))
+    .map(({ path, sha, size }) => ({ path, sha, size: size || 0 }));
+
+  applyTree(entries);
+  treeFresh = true;
+  lastTreeCheck = Date.now();
+  if (!silent) setStatus(data.truncated ? 'Ready (repo is large: file list is truncated)' : 'Ready');
+
+  startPrefetch();
 }
 
 /* ---------- open / render ---------- */
@@ -184,24 +387,39 @@ async function openFile(path) {
   $('attr-panel').classList.add('hidden');
   selectedMediaEl = null;
 
-  const res = await ghFetch(`/contents/${encPath(path)}?ref=${encodeURIComponent(cfg.branch)}`);
-  if (seq !== openSeq) return;
-  if (!res.ok) return setStatus('Error fetching file', true);
-  const data = await res.json();
-
   const kind = fileKind(path);
-  let text = null;
-  if (kind === 'html' || kind === 'text') {
-    try {
-      text = await readText(data);
-    } catch (err) {
-      if (seq === openSeq) setStatus(err.message, true);
-      return;
+  let sha;
+  let buf = null;
+
+  try {
+    // If we're still showing the cached list, make sure we have the latest shas first (usually a few ms).
+    if (!treeFresh && treePromise) {
+      await treePromise;
+      if (seq !== openSeq) return;
     }
-    if (seq !== openSeq) return;
+
+    sha = shaByPath.get(path);
+    if (!sha) {
+      // Not in our list (e.g. added elsewhere moments ago): ask GitHub for the current sha.
+      const res = await ghFetch(`/contents/${encPath(path)}?ref=${encodeURIComponent(cfg.branch)}`, {
+        cache: 'no-store'
+      });
+      if (seq !== openSeq) return;
+      if (!res.ok) return setStatus('Error fetching file', true);
+      sha = (await res.json()).sha;
+      shaByPath.set(path, sha);
+    }
+
+    if (kind !== 'binary') {
+      buf = await fetchBlob(sha); // instant if prefetched or opened before
+      if (seq !== openSeq) return;
+    }
+  } catch (err) {
+    if (seq === openSeq) setStatus(err.message || 'Error fetching file', true);
+    return;
   }
 
-  currentFile = { path: data.path, sha: data.sha, type: kind };
+  currentFile = { path, sha, type: kind };
 
   document.querySelectorAll('#file-tree li').forEach((li) => {
     li.classList.toggle('active', li.dataset.path === path);
@@ -211,6 +429,11 @@ async function openFile(path) {
   $('delete-btn').disabled = false;
   $('save-btn').disabled = true; // enabled below once the content is actually loaded
 
+  if (previewUrl) {
+    URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+  }
+
   if (kind === 'html') {
     showEditor('html');
     const iframe = $('html-editor');
@@ -218,16 +441,17 @@ async function openFile(path) {
     iframe.onload = () => {
       if (seq === openSeq) $('save-btn').disabled = false;
     };
-    renderHtmlInIframe(text, path);
+    renderHtmlInIframe(new TextDecoder().decode(buf), path);
     setStatus('Loaded');
   } else if (kind === 'text') {
     showEditor('text');
-    $('text-editor').value = text;
+    $('text-editor').value = new TextDecoder().decode(buf);
     $('save-btn').disabled = false;
     setStatus('Loaded');
   } else if (kind === 'img') {
     showEditor('img');
-    $('preview-img').src = data.download_url;
+    previewUrl = URL.createObjectURL(new Blob([buf], { type: IMAGE_MIME[extOf(path)] }));
+    $('preview-img').src = previewUrl;
     setStatus('Loaded');
   } else {
     showEditor(null);
@@ -442,6 +666,8 @@ async function saveCurrentFile() {
 
   const data = await res.json();
   currentFile.sha = data.content.sha;
+  cacheBlob(data.content.sha, textToBuffer(rawContent)); // re-opening this version needs no download
+  upsertEntry(currentFile.path, data.content.sha, data.content.size);
   setStatus('Saved & committed!');
 }
 
@@ -451,6 +677,8 @@ async function createNewFile() {
   const relPath = prompt('File path inside /src (e.g. contact.html or notes.txt):');
   if (!relPath) return;
   const path = fullPath(relPath);
+  if (shaByPath.has(path)) return setStatus(`${path} already exists`, true);
+
   const isHtml = path.endsWith('.html') || path.endsWith('.htm');
   const starter = isHtml
     ? `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>New Page</title>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <h1>New Page</h1>\n  <p>Click here to edit text.</p>\n</body>\n</html>\n`
@@ -467,7 +695,10 @@ async function createNewFile() {
   });
 
   if (!res.ok) return setStatus('Could not create file (does it already exist?)', true);
-  await loadTree();
+
+  const data = await res.json();
+  cacheBlob(data.content.sha, textToBuffer(starter));
+  upsertEntry(path, data.content.sha, data.content.size);
   openFile(path);
 }
 
@@ -483,11 +714,13 @@ async function uploadImageFile(e) {
   setStatus(`Uploading ${path}...`);
   const b64 = await fileToBase64(file);
 
-  let existingSha;
-  const check = await ghFetch(`/contents/${encPath(path)}?ref=${encodeURIComponent(cfg.branch)}`);
-  if (check.ok) {
-    const existing = await check.json();
-    existingSha = existing.sha;
+  // We already know the sha of every file in the list; only ask GitHub when the path isn't in it.
+  let existingSha = shaByPath.get(path);
+  if (!existingSha) {
+    const check = await ghFetch(`/contents/${encPath(path)}?ref=${encodeURIComponent(cfg.branch)}`, {
+      cache: 'no-store'
+    });
+    if (check.ok) existingSha = (await check.json()).sha;
   }
 
   const res = await ghFetch(`/contents/${encPath(path)}`, {
@@ -501,7 +734,9 @@ async function uploadImageFile(e) {
   });
 
   if (!res.ok) return setStatus('Upload failed', true);
-  await loadTree();
+
+  const data = await res.json();
+  upsertEntry(path, data.content.sha, data.content.size);
   openFile(path);
 }
 
@@ -525,6 +760,7 @@ async function deleteCurrentFile() {
   if (!res.ok) return setStatus('Delete failed', true);
 
   openSeq++; // cancel any in-flight open
+  removeEntry(currentFile.path);
   currentFile = null;
   selectedMediaEl = null;
   $('current-path').textContent = 'Select a file from /src';
@@ -532,8 +768,6 @@ async function deleteCurrentFile() {
   $('delete-btn').disabled = true;
   showEditor(null);
   $('attr-panel').classList.add('hidden');
-
-  await loadTree();
   setStatus('Deleted');
 }
 
