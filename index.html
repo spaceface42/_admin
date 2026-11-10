@@ -9,11 +9,29 @@
 <body>
   <!-- Auth Overlay -->
   <div id="login-screen" class="overlay hidden">
-    <div class="card">
+    <form id="login-form" class="card">
       <h2>CMS Studio Login</h2>
-      <p>Enter your fine-grained GitHub Personal Access Token with <strong>Contents: Read & Write</strong> permissions.</p>
-      <input type="password" id="pat-input" placeholder="github_pat_..." autocomplete="off">
-      <button id="login-btn">Authenticate</button>
+      <p>Enter your fine-grained GitHub Personal Access Token with <strong>Contents: Read & Write</strong> permissions on <code>_blackhole</code>.</p>
+      <input type="text" name="username" value="github-pat" autocomplete="username" tabindex="-1" aria-hidden="true" hidden style="display:none">
+      <input type="password" id="pat-input" name="pat" placeholder="github_pat_..." autocomplete="off">
+      <button type="submit" id="login-btn">Authenticate</button>
+    </form>
+  </div>
+
+  <!-- Page Settings Modal (Feature 6: <title> & meta description editor) -->
+  <div id="meta-modal" class="overlay hidden">
+    <div class="card">
+      <h2>Page SEO & Settings</h2>
+      <label class="field-label">Page Title (<code>&lt;title&gt;</code>)
+        <input type="text" id="meta-title-input" placeholder="Page Title">
+      </label>
+      <label class="field-label">Meta Description
+        <textarea id="meta-desc-input" rows="3" placeholder="Brief summary of this page..."></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="meta-cancel-btn">Cancel</button>
+        <button type="button" id="meta-apply-btn" class="primary">Apply</button>
+      </div>
     </div>
   </div>
 
@@ -22,16 +40,16 @@
     <aside id="sidebar">
       <div class="sidebar-header">
         <div class="brand">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-          <span>/src Repository</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+          <span>/src Files</span>
         </div>
         <div class="sidebar-actions">
           <label class="filter-chip" title="Show .html files only">
             <input type="checkbox" id="filter-html-checkbox"> .html
           </label>
-          <button id="new-btn" title="Create New File">+</button>
-          <label class="upload-btn" title="Upload Asset">
-            ↑ <input type="file" id="upload-input" accept="image/*" hidden>
+          <button id="new-btn" title="Create New File">+ File</button>
+          <label class="upload-btn" title="Upload Image">
+            + Img <input type="file" id="upload-input" accept="image/*" hidden>
           </label>
         </div>
       </div>
@@ -44,13 +62,15 @@
     <main id="workspace">
       <header id="toolbar">
         <div class="path-display">
-          <span class="dot"></span>
-          <span id="current-path">Select a file from the sidebar to begin editing</span>
+          <span id="deploy-dot" class="dot" title="Status"></span>
+          <span id="current-path">Select a file from /src</span>
+          <span id="dirty-indicator" class="dirty-badge hidden" title="Unsaved changes">● Unsaved</span>
         </div>
         <div class="toolbar-actions">
           <span id="status-msg"></span>
-          <button id="delete-btn" class="danger" disabled>Delete File</button>
-          <button id="save-btn" class="primary" disabled>Commit Changes</button>
+          <button id="page-meta-btn" class="hidden" title="Edit Page Title & Meta Description">Page SEO</button>
+          <button id="delete-btn" class="danger" disabled>Delete</button>
+          <button id="save-btn" class="primary" disabled title="Save & Commit (Cmd/Ctrl + S)">Commit Changes</button>
         </div>
       </header>
 
@@ -61,12 +81,35 @@
           <img id="preview-img" alt="Asset Preview">
         </div>
 
-        <!-- Floating Attribute Inspector -->
+        <!-- Floating Element & Attribute Inspector -->
         <div id="attr-panel" class="hidden">
-          <div class="panel-title">Element Inspector</div>
-          <label id="href-row"><span>href</span> <input type="text" id="attr-href"></label>
-          <label id="src-row"><span>src</span> <input type="text" id="attr-src"></label>
-          <label id="alt-row"><span>alt</span> <input type="text" id="attr-alt"></label>
+          <div class="panel-header">
+            <span class="panel-title">Selected: <code id="selected-tag">ELEMENT</code></span>
+            <div class="block-actions">
+              <button type="button" id="dup-block-btn" title="Duplicate Element (Alt+Enter)">Duplicate</button>
+              <button type="button" id="del-block-btn" class="danger" title="Remove Element">Remove</button>
+            </div>
+          </div>
+          <label id="href-row" class="hidden">
+            <span>href</span>
+            <input type="text" id="attr-href" list="repo-links-datalist" placeholder="https:// or page.html">
+          </label>
+          <label id="src-row" class="hidden">
+            <span>src</span>
+            <input type="text" id="attr-src" list="repo-images-datalist" placeholder="resources/logo.svg">
+          </label>
+          <label id="img-picker-row" class="hidden">
+            <span>pick</span>
+            <select id="attr-src-select">
+              <option value="">— Choose repo image —</option>
+            </select>
+          </label>
+          <label id="alt-row" class="hidden">
+            <span>alt</span>
+            <input type="text" id="attr-alt" placeholder="Describe image">
+          </label>
+          <datalist id="repo-images-datalist"></datalist>
+          <datalist id="repo-links-datalist"></datalist>
         </div>
       </div>
     </main>
