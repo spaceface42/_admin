@@ -32,6 +32,7 @@ let previewUrl = null;
 let iframeBlobUrls = []; // Local blob URLs created for instant repo image previews
 let isDirty = false;
 let deployPollTimer = null;
+let deployToastTimer = null;
 
 // File tree state
 let treeEntries = []; // [{ path, sha, size }]
@@ -55,6 +56,21 @@ const encPath = (p) => p.split('/').map(encodeURIComponent).join('/');
 const rootPrefix = () => (cfg.root ? `${cfg.root}/` : '');
 const fullPath = (rel) => [cfg.root, rel.replace(/^\/+/, '')].filter(Boolean).join('/');
 const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+
+function liveUrlForCurrentFile() {
+  if (!cfg || !cfg.siteUrl) return '#';
+  if (!currentFile) return cfg.siteUrl;
+  const rel = currentFile.path.slice(rootPrefix().length);
+  return cfg.siteUrl + encPath(rel);
+}
+
+function updateLiveLinks() {
+  const url = liveUrlForCurrentFile();
+  const badge = $('deploy-badge');
+  const toastLink = $('deploy-toast-link');
+  if (badge) badge.href = url;
+  if (toastLink) toastLink.href = url;
+}
 
 function toBase64(str) {
   const bytes = new TextEncoder().encode(str);
@@ -298,15 +314,33 @@ function hoverPrefetch(path) {
   }, HOVER_PREFETCH_DELAY_MS);
 }
 
-/* ---------- Feature 7: Live GitHub Actions Deployment Status ---------- */
+/* ---------- Feature 7: High-Visibility GitHub Actions Deployment Status ---------- */
+
+function showDeployBanner(actionLabel = 'Your latest commit is now live on GitHub Pages.') {
+  clearTimeout(deployToastTimer);
+  const toast = $('deploy-toast');
+  const sub = $('deploy-toast-sub');
+  if (sub) sub.textContent = actionLabel;
+  updateLiveLinks();
+  if (toast) toast.classList.remove('hidden');
+
+  deployToastTimer = setTimeout(() => {
+    if (toast) toast.classList.add('hidden');
+  }, 10000);
+}
 
 function pollDeploymentStatus() {
   clearTimeout(deployPollTimer);
-  const dot = $('deploy-dot');
-  if (dot) {
-    dot.className = 'dot deploying';
-    dot.title = 'GitHub Pages deployment in progress...';
+  const badge = $('deploy-badge');
+  const label = $('deploy-label');
+  const toast = $('deploy-toast');
+  if (toast) toast.classList.add('hidden');
+
+  if (badge) {
+    badge.className = 'deploy-pill deploying';
+    badge.title = 'GitHub Pages deployment in progress...';
   }
+  if (label) label.textContent = 'DEPLOYING...';
   let attempts = 0;
 
   const check = async () => {
@@ -314,41 +348,54 @@ function pollDeploymentStatus() {
     try {
       const res = await ghFetch('/actions/runs?per_page=1', { cache: 'no-store' });
       if (!res.ok) {
-        if (dot) dot.className = 'dot';
+        if (badge) badge.className = 'deploy-pill ready';
+        if (label) label.textContent = 'LIVE';
         return;
       }
       const data = await res.json();
       const run = data.workflow_runs && data.workflow_runs[0];
       if (!run) {
-        if (dot) dot.className = 'dot';
+        if (badge) badge.className = 'deploy-pill ready';
+        if (label) label.textContent = 'LIVE';
         return;
       }
       if (run.status === 'completed') {
         if (run.conclusion === 'success') {
-          if (dot) {
-            dot.className = 'dot';
-            dot.title = 'Live on GitHub Pages';
+          if (badge) {
+            badge.className = 'deploy-pill just-deployed';
+            badge.title = 'Deployed live on GitHub Pages! Click to open.';
           }
+          if (label) label.textContent = '✓ DEPLOYED LIVE';
           setStatus('Saved & deployed live to GitHub Pages!');
+          showDeployBanner(currentFile ? `${currentFile.path} is now live on GitHub Pages.` : 'Your changes are now public on the live site.');
+          setTimeout(() => {
+            if (badge && badge.classList.contains('just-deployed')) {
+              badge.className = 'deploy-pill ready';
+              if (label) label.textContent = 'LIVE';
+            }
+          }, 12000);
         } else {
-          if (dot) {
-            dot.className = 'dot error';
-            dot.title = `Deployment ${run.conclusion}`;
+          if (badge) {
+            badge.className = 'deploy-pill error';
+            badge.title = `Deployment ${run.conclusion}`;
           }
+          if (label) label.textContent = 'DEPLOY FAILED';
           setStatus(`Saved, but Pages deploy ${run.conclusion}`, true);
         }
         return;
       }
+      if (label) label.textContent = `DEPLOYING (${run.status.toUpperCase()})...`;
       setStatus(`Saved — Deploying to Pages (${run.status})...`);
     } catch (_) {}
-    if (attempts < 20) {
-      deployPollTimer = setTimeout(check, 5000);
-    } else if (dot) {
-      dot.className = 'dot';
+    if (attempts < 24) {
+      deployPollTimer = setTimeout(check, 4500);
+    } else {
+      if (badge) badge.className = 'deploy-pill ready';
+      if (label) label.textContent = 'LIVE';
     }
   };
 
-  deployPollTimer = setTimeout(check, 3500);
+  deployPollTimer = setTimeout(check, 3000);
 }
 
 /* ---------- init ---------- */
@@ -370,6 +417,12 @@ async function init() {
   }
   cfg.root = (cfg.root || '').replace(/^\/+|\/+$/g, '');
   if (!cfg.siteUrl.endsWith('/')) cfg.siteUrl += '/';
+  updateLiveLinks();
+
+  const toastClose = $('deploy-toast-close');
+  if (toastClose) {
+    toastClose.onclick = () => $('deploy-toast').classList.add('hidden');
+  }
 
   // Restore saved .html filter preference
   const filterCheckbox = $('filter-html-checkbox');
@@ -748,6 +801,7 @@ async function openFile(path) {
   }
 
   currentFile = { path, sha, type: kind };
+  updateLiveLinks();
   populateAssetPickers();
 
   document.querySelectorAll('#file-tree li').forEach((li) => {
@@ -820,7 +874,6 @@ async function hydrateRepoAssetsInIframe(liveDoc, pagePath) {
   const rel = pagePath.slice(rootPrefix().length);
   const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/') + 1) : '';
 
-  // Hydrate all relative <img> elements directly from GitHub blob cache so moved/new images work immediately
   const imgs = Array.from(liveDoc.querySelectorAll('img[src]'));
   await Promise.all(
     imgs.map(async (img) => {
@@ -829,7 +882,6 @@ async function hydrateRepoAssetsInIframe(liveDoc, pagePath) {
     })
   );
 
-  // Hydrate relative <link rel="stylesheet"> from repo blobs so local CSS changes preview immediately
   const links = Array.from(liveDoc.querySelectorAll('link[rel="stylesheet"][href]'));
   await Promise.all(
     links.map(async (link) => {
@@ -1031,7 +1083,6 @@ function serializeCleanHtml() {
     el.removeAttribute('data-cms-orig-http-equiv');
   });
 
-  // Restore original relative src/href attributes that were swapped to local blob URLs
   clone.querySelectorAll('[data-cms-orig-src]').forEach((el) => {
     el.setAttribute('src', el.getAttribute('data-cms-orig-src'));
     el.removeAttribute('data-cms-orig-src');
@@ -1203,6 +1254,7 @@ async function deleteCurrentFile() {
     selectedBlockEl = null;
     selectedMediaEl = null;
     setDirty(false);
+    updateLiveLinks();
     $('current-path').textContent = 'Select a file from /src';
     $('save-btn').disabled = true;
     $('delete-btn').disabled = true;

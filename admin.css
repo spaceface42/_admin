@@ -82,14 +82,79 @@ button.danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.12); }
 /* Workspace & Toolbar */
 #workspace { flex: 1; display: flex; flex-direction: column; background: #0f172a; }
 #toolbar {
-  height: 54px; border-bottom: 1px solid var(--border); padding: 0 1.15rem;
+  height: 56px; border-bottom: 1px solid var(--border); padding: 0 1.15rem;
   display: flex; align-items: center; justify-content: space-between; background: var(--bg-sidebar);
 }
-.path-display { display: flex; align-items: center; gap: 0.55rem; font-size: 0.85rem; }
-.dot { width: 9px; height: 9px; background: #22c55e; border-radius: 50%; display: inline-block; transition: background 0.3s; }
-.dot.deploying { background: #eab308; box-shadow: 0 0 8px #eab308; animation: pulse 1.2s infinite; }
-.dot.error { background: #ef4444; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.path-display { display: flex; align-items: center; gap: 0.65rem; font-size: 0.85rem; }
+
+/* Prominent Deployment Status Pill */
+.deploy-pill {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.3rem 0.7rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.05em; text-decoration: none; transition: all 0.25s ease;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.14); color: #4ade80;
+}
+.deploy-pill:hover {
+  background: rgba(34, 197, 94, 0.24); border-color: #22c55e; transform: translateY(-1px);
+}
+.deploy-pill.deploying {
+  background: rgba(234, 179, 8, 0.18); border-color: rgba(234, 179, 8, 0.5); color: #fde047;
+}
+.deploy-pill.just-deployed {
+  background: #16a34a; border-color: #4ade80; color: #ffffff;
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.65);
+  transform: scale(1.05);
+}
+.deploy-pill.error {
+  background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;
+}
+
+.dot { width: 10px; height: 10px; background: #22c55e; border-radius: 50%; display: inline-block; box-shadow: 0 0 6px #22c55e; transition: all 0.3s; }
+.deploy-pill.deploying .dot { background: #eab308; box-shadow: 0 0 10px #eab308; animation: pulse 1s infinite; }
+.deploy-pill.just-deployed .dot { background: #ffffff; box-shadow: 0 0 10px #ffffff; }
+.deploy-pill.error .dot { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
+
+/* Big Green Deployed Toast Banner */
+.deploy-toast {
+  background: linear-gradient(90deg, #065f46 0%, #15803d 50%, #16a34a 100%);
+  border-bottom: 2px solid #4ade80;
+  color: #ffffff;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8px 25px rgba(22, 163, 74, 0.35);
+  z-index: 30;
+  animation: slideDown 0.25s ease-out;
+}
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.deploy-toast-content {
+  display: flex; align-items: center; gap: 0.75rem; font-size: 0.875rem;
+}
+.deploy-check-icon {
+  width: 26px; height: 26px; border-radius: 50%; background: #ffffff; color: #15803d;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 0.95rem; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+.deploy-toast-content strong { font-size: 0.92rem; margin-right: 0.5rem; }
+.deploy-toast-content span { color: #dcfce7; font-size: 0.82rem; }
+.deploy-toast-actions { display: flex; align-items: center; gap: 0.6rem; }
+.toast-visit-btn {
+  background: #ffffff; color: #065f46; font-weight: 700; font-size: 0.78rem;
+  padding: 0.4rem 0.85rem; border-radius: 6px; text-decoration: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: transform 0.15s, background 0.15s;
+}
+.toast-visit-btn:hover { background: #f0fdf4; transform: translateY(-1px); }
+.toast-close-btn {
+  background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff; padding: 0.3rem 0.55rem; border-radius: 6px; cursor: pointer;
+}
+.toast-close-btn:hover { background: rgba(0, 0, 0, 0.4); }
 
 #current-path { color: #e2e8f0; font-family: ui-monospace, monospace; font-size: 0.82rem; }
 .dirty-badge { font-size: 0.72rem; color: #fbbf24; background: rgba(251, 191, 36, 0.12); padding: 0.15rem 0.45rem; border-radius: 999px; border: 1px solid rgba(251, 191, 36, 0.3); }

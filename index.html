@@ -62,7 +62,10 @@
     <main id="workspace">
       <header id="toolbar">
         <div class="path-display">
-          <span id="deploy-dot" class="dot" title="Status"></span>
+          <a id="deploy-badge" class="deploy-pill ready" href="#" target="_blank" rel="noopener" title="Open live GitHub Pages site">
+            <span id="deploy-dot" class="dot"></span>
+            <span id="deploy-label">LIVE</span>
+          </a>
           <span id="current-path">Select a file from /src</span>
           <span id="dirty-indicator" class="dirty-badge hidden" title="Unsaved changes">● Unsaved</span>
         </div>
@@ -73,6 +76,21 @@
           <button id="save-btn" class="primary" disabled title="Save & Commit (Cmd/Ctrl + S)">Commit Changes</button>
         </div>
       </header>
+
+      <!-- High-Visibility Live Deployment Banner -->
+      <div id="deploy-toast" class="deploy-toast hidden">
+        <div class="deploy-toast-content">
+          <span class="deploy-check-icon">✓</span>
+          <div>
+            <strong>Deployed Live to GitHub Pages!</strong>
+            <span id="deploy-toast-sub">Your changes are now public on the live site.</span>
+          </div>
+        </div>
+        <div class="deploy-toast-actions">
+          <a id="deploy-toast-link" href="#" target="_blank" rel="noopener" class="toast-visit-btn">Open Live Page ↗</a>
+          <button type="button" id="deploy-toast-close" class="toast-close-btn" title="Dismiss">✕</button>
+        </div>
+      </div>
 
       <div id="editor-container">
         <iframe id="html-editor" class="hidden"></iframe>
