@@ -1,10 +1,2 @@
-/node_modules/
 .DS_Store
-/.DS_Store
-/test-results/
-/playwright-report/
-/coverage/
-*.log
-/admin.built.extracted.js
-/fragments.json
-/gitcms.config.json
+_secret

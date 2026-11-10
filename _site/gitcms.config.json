@@ -1,8 +1,0 @@
-{
-  "workBranch": "content",
-  "media": {
-    "dir": "assets/media",
-    "publicPrefix": "assets/media/"
-  },
-  "manifestPath": "partials.json"
-}

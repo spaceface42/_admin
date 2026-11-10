@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>_admin CMS</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div id="login-screen" class="overlay hidden">
+    <form id="login-form" class="card">
+      <h2>CMS Login</h2>
+      <p>Paste a fine-grained GitHub PAT with <strong>Contents: Read & Write</strong> on <code>_blackhole</code>.</p>
+      <!-- Hidden username field: satisfies Chrome's "password forms should have a username field" hint -->
+      <input type="text" name="username" value="github-pat" autocomplete="username" tabindex="-1" aria-hidden="true" hidden style="display:none">
+      <input type="password" id="pat-input" name="pat" placeholder="github_pat_..." autocomplete="off">
+      <button type="submit" id="login-btn">Login</button>
+    </form>
+  </div>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <strong>/src Files</strong>
+        <div class="sidebar-actions">
+          <button id="new-btn" title="Create Text/HTML File">+ File</button>
+          <label class="upload-btn" title="Upload Image">
+            + Img <input type="file" id="upload-input" accept="image/*" hidden>
+          </label>
+        </div>
+      </div>
+      <ul id="file-tree"></ul>
+      <div class="sidebar-footer">
+        <button id="logout-btn">Logout</button>
+      </div>
+    </aside>
+    <main id="workspace">
+      <header id="toolbar">
+        <span id="current-path">Select a file from /src</span>
+        <div class="toolbar-actions">
+          <span id="status-msg"></span>
+          <button id="delete-btn" class="danger" disabled>Delete</button>
+          <button id="save-btn" class="primary" disabled>Save</button>
+        </div>
+      </header>
+      <div id="editor-container">
+        <iframe id="html-editor" class="hidden"></iframe>
+        <textarea id="text-editor" class="hidden" spellcheck="false"></textarea>
+        <div id="image-preview" class="hidden">
+          <img id="preview-img" alt="Preview">
+        </div>
+        <div id="attr-panel" class="hidden">
+          <label id="href-row">href <input type="text" id="attr-href"></label>
+          <label id="src-row">src <input type="text" id="attr-src"></label>
+          <label id="alt-row">alt <input type="text" id="attr-alt"></label>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="admin.js"></script>
+</body>
+</html>
