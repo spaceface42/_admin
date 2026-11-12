@@ -3,51 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Blackhole CMS Studio</title>
+  <title>_admin CMS</title>
   <link rel="stylesheet" href="admin.css">
 </head>
 <body>
-  <!-- Auth Overlay -->
   <div id="login-screen" class="overlay hidden">
-    <form id="login-form" class="card">
-      <h2>CMS Studio Login</h2>
-      <p>Enter your fine-grained GitHub Personal Access Token with <strong>Contents: Read & Write</strong> permissions on <code>_blackhole</code>.</p>
-      <input type="text" name="username" value="github-pat" autocomplete="username" tabindex="-1" aria-hidden="true" hidden style="display:none">
-      <input type="password" id="pat-input" name="pat" placeholder="github_pat_..." autocomplete="off">
-      <button type="submit" id="login-btn">Authenticate</button>
-    </form>
-  </div>
-
-  <!-- Page Settings Modal (Feature 6: <title> & meta description editor) -->
-  <div id="meta-modal" class="overlay hidden">
     <div class="card">
-      <h2>Page SEO & Settings</h2>
-      <label class="field-label">Page Title (<code>&lt;title&gt;</code>)
-        <input type="text" id="meta-title-input" placeholder="Page Title">
-      </label>
-      <label class="field-label">Meta Description
-        <textarea id="meta-desc-input" rows="3" placeholder="Brief summary of this page..."></textarea>
-      </label>
-      <div class="modal-actions">
-        <button type="button" id="meta-cancel-btn">Cancel</button>
-        <button type="button" id="meta-apply-btn" class="primary">Apply</button>
-      </div>
+      <h2>CMS Login</h2>
+      <p>Paste a fine-grained GitHub PAT with <strong>Contents: Read & Write</strong> on <code>_blackhole</code>.</p>
+      <input type="password" id="pat-input" placeholder="github_pat_..." autocomplete="off">
+      <button id="login-btn">Login</button>
     </div>
   </div>
-
-  <!-- Main Workspace -->
   <div id="app">
     <aside id="sidebar">
       <div class="sidebar-header">
-        <div class="brand">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-          <span>/src Files</span>
-        </div>
+        <strong>/src Files</strong>
         <div class="sidebar-actions">
-          <label class="filter-chip" title="Show .html files only">
-            <input type="checkbox" id="filter-html-checkbox"> .html
-          </label>
-          <button id="new-btn" title="Create New File">+ File</button>
+          <button id="new-btn" title="Create Text/HTML File">+ File</button>
           <label class="upload-btn" title="Upload Image">
             + Img <input type="file" id="upload-input" accept="image/*" hidden>
           </label>
@@ -55,84 +28,32 @@
       </div>
       <ul id="file-tree"></ul>
       <div class="sidebar-footer">
-        <button id="logout-btn" class="secondary-btn">Disconnect Token</button>
+        <button id="logout-btn">Logout</button>
       </div>
     </aside>
-
     <main id="workspace">
       <header id="toolbar">
-        <div class="path-display">
-          <a id="deploy-badge" class="deploy-pill ready" href="#" target="_blank" rel="noopener" title="Open live GitHub Pages site">
-            <span id="deploy-dot" class="dot"></span>
-            <span id="deploy-label">LIVE</span>
-          </a>
-          <span id="current-path">Select a file from /src</span>
-          <span id="dirty-indicator" class="dirty-badge hidden" title="Unsaved changes">● Unsaved</span>
-        </div>
+        <span id="current-path">Select a file from /src</span>
         <div class="toolbar-actions">
           <span id="status-msg"></span>
-          <button id="page-meta-btn" class="hidden" title="Edit Page Title & Meta Description">Page SEO</button>
           <button id="delete-btn" class="danger" disabled>Delete</button>
-          <button id="save-btn" class="primary" disabled title="Save & Commit (Cmd/Ctrl + S)">Commit Changes</button>
+          <button id="save-btn" class="primary" disabled>Save</button>
         </div>
       </header>
-
-      <!-- High-Visibility Live Deployment Banner -->
-      <div id="deploy-toast" class="deploy-toast hidden">
-        <div class="deploy-toast-content">
-          <span class="deploy-check-icon">✓</span>
-          <div>
-            <strong>Deployed Live to GitHub Pages!</strong>
-            <span id="deploy-toast-sub">Your changes are now public on the live site.</span>
-          </div>
-        </div>
-        <div class="deploy-toast-actions">
-          <a id="deploy-toast-link" href="#" target="_blank" rel="noopener" class="toast-visit-btn">Open Live Page ↗</a>
-          <button type="button" id="deploy-toast-close" class="toast-close-btn" title="Dismiss">✕</button>
-        </div>
-      </div>
-
       <div id="editor-container">
         <iframe id="html-editor" class="hidden"></iframe>
         <textarea id="text-editor" class="hidden" spellcheck="false"></textarea>
         <div id="image-preview" class="hidden">
-          <img id="preview-img" alt="Asset Preview">
+          <img id="preview-img" alt="Preview">
         </div>
-
-        <!-- Floating Element & Attribute Inspector -->
         <div id="attr-panel" class="hidden">
-          <div class="panel-header">
-            <span class="panel-title">Selected: <code id="selected-tag">ELEMENT</code></span>
-            <div class="block-actions">
-              <button type="button" id="dup-block-btn" title="Duplicate Element (Alt+Enter)">Duplicate</button>
-              <button type="button" id="del-block-btn" class="danger" title="Remove Element">Remove</button>
-            </div>
-          </div>
-          <label id="href-row" class="hidden">
-            <span>href</span>
-            <input type="text" id="attr-href" list="repo-links-datalist" placeholder="https:// or page.html">
-          </label>
-          <label id="src-row" class="hidden">
-            <span>src</span>
-            <input type="text" id="attr-src" list="repo-images-datalist" placeholder="resources/logo.svg">
-          </label>
-          <label id="img-picker-row" class="hidden">
-            <span>pick</span>
-            <select id="attr-src-select">
-              <option value="">— Choose repo image —</option>
-            </select>
-          </label>
-          <label id="alt-row" class="hidden">
-            <span>alt</span>
-            <input type="text" id="attr-alt" placeholder="Describe image">
-          </label>
-          <datalist id="repo-images-datalist"></datalist>
-          <datalist id="repo-links-datalist"></datalist>
+          <label id="href-row">href <input type="text" id="attr-href"></label>
+          <label id="src-row">src <input type="text" id="attr-src"></label>
+          <label id="alt-row">alt <input type="text" id="attr-alt"></label>
         </div>
       </div>
     </main>
   </div>
-
   <script src="admin.js"></script>
 </body>
 </html>
